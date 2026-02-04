@@ -17,16 +17,17 @@ Carousel is a Raspberry Pi Zero-powered LED matrix display framework designed to
 - [ ] Spotify player[^3]
 - [ ] Stocks & crypto
 - [ ] Youtube subscribers count
-- [ ] ...
+
+Feel free to suggest new apps by [creating an issue](https://github.com/MorganKryze/Carousel/issues) on the repository!
 
 ## Documentation
 
 Comprehensive guides to help you get started:
 
-- [Wiring Guide](./docs/wiring.md)
-- [Installation Guide](./docs/installation.md)
-- [Configuration Guide](./docs/configuration.md)
-- [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
+1. [Wiring Guide](./docs/wiring.md)
+2. [Installation Guide](./docs/installation.md)
+3. [Configuration Guide](./docs/configuration.md)
+4. [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
 
 ## Troubleshooting
 
