@@ -5,7 +5,7 @@ from loguru import logger
 
 from core.config import Configuration
 from core.game_loop import GameLoop
-from core.logs import Logs
+from core.logs import start_logger
 from core.path import PathTo
 from display.animations import Animations
 
@@ -56,7 +56,7 @@ def main() -> None:
     PathTo.add_library_to_path()
 
     log_level = "DEBUG" if args.debug else "WARNING"
-    Logs.start(file_level="DEBUG", console_level=log_level)
+    start_logger(file_level="DEBUG", console_level=log_level)
 
     # TODO: by default config should load the last working config, but in case of a failure, for the fallback it might be interesting to be able to reload a config from a specific id
     config = Configuration()

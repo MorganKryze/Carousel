@@ -2,7 +2,6 @@ import calendar
 import os
 import time
 from datetime import datetime
-from io.display_controller import DisplayController
 from typing import Callable, Dict
 
 from dateutil import tz
@@ -282,7 +281,7 @@ class MainScreen(Application):
         if len(self.queued_frames) == 0:
             frame = Image.new(
                 "RGBA",
-                (DisplayController().led_cols, DisplayController().led_rows),
+                (self.context.display.led_cols, self.context.display.led_rows),
                 washed_out_navy,
             )
         else:

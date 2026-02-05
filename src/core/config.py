@@ -231,16 +231,6 @@ class Configuration:
             logger.error(f"Failed to set value at {' -> '.join(keys)}: {e}")
             return False
 
-    def get_version_from_pyproject(self) -> str:
-        """
-        Reads the version from the pyproject.toml file.
-        """
-        with open(PathTo.PYPROJECT_FILE, "rb") as f:
-            data = tomllib.load(f)
-
-        version = data.get("project", {}).get("version", "unknown")
-        return version
-
     def get_generation_filenames(self) -> list[str]:
         """
         Retrieves all generation filenames from the generations folder.
@@ -305,28 +295,6 @@ class Configuration:
 
         return os.path.join(PathTo.GENERATIONS_FOLDER, f"generation_{latest_id}.yaml")
 
-    def get_addresses(self) -> tuple[str, str]:
-        """
-        Retrieves the local IP address of the machine and the hostname.
-        """
-        s = None
-        try:
-            hostname = socket.gethostname()
-            local_hostname = f"{hostname}.local"
-            dummy_target = "10.255.255.255"
-
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect((dummy_target, 1))
-            local_ip = s.getsockname()[0]
-
-            return local_hostname, local_ip
-        except Exception as e:
-            logger.warning(f"Failed to retrieve hostname or public IP: {e}")
-            return "unknown", "unknown"
-        finally:
-            if s:
-                s.close()
-
     def flag_current_generation_as_broken(self, reason: str) -> None:
         """
         Flags the current generation as broken and saves the reason.
@@ -361,6 +329,37 @@ class Configuration:
         logger.critical(f"Critical error occurred: {reason}")
         logger.critical("Exiting program.")
         sys.exit(1)
+
+
+def get_version_from_pyproject() -> str:
+    """
+    Reads the version from the pyproject.toml file.
+    """
+    with open(PathTo.PYPROJECT_FILE, "rb") as f:
+        data = tomllib.load(f)
+    version = data.get("project", {}).get("version", "unknown")
+    return version
+
+
+def get_addresses() -> tuple[str, str]:
+    """
+    Retrieves the local IP address of the machine and the hostname.
+    """
+    s = None
+    try:
+        hostname = socket.gethostname()
+        local_hostname = f"{hostname}.local"
+        dummy_target = "10.255.255.255"
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect((dummy_target, 1))
+        local_ip = s.getsockname()[0]
+        return local_hostname, local_ip
+    except Exception as e:
+        logger.warning(f"Failed to retrieve hostname or public IP: {e}")
+        return "unknown", "unknown"
+    finally:
+        if s:
+            s.close()
 
 
 # TODO: Add functions to validate configuration values and structure, and to handle configuration migrations when the structure changes in future versions.

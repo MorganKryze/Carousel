@@ -16,14 +16,15 @@ class DisplayController:
     SCREEN_RATIO: int = 16
     VALID_HARDWARE_MAPPINGS: tuple[str, ...] = ("regular", "adafruit-hat")
     
-    def __new__(cls, use_emulator: bool = False) -> "DisplayController":
+    def __new__(cls, config: Configuration, use_emulator: bool = False) -> "DisplayController":
         if cls._instance is None:
             cls._instance = super(DisplayController, cls).__new__(cls)
-            cls._instance._initialize(use_emulator=use_emulator)
+            cls._instance._initialize(config=config, use_emulator=use_emulator)
         return cls._instance
 
-    def _initialize(self, use_emulator: bool = False) -> None:
+    def _initialize(self, config: Configuration, use_emulator: bool = False) -> None:
         """Initializes the display components."""
+        self._config = config
         self._state: SystemState = SystemState()
         
         self.led_rows: int = 0
@@ -40,53 +41,53 @@ class DisplayController:
             logger.info("Display system initialized.")
         except Exception as e:
             logger.error(f"Failed to initialize Display components: {e}")
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"Failed to initialize display: {e}. Please check your configuration."
             )
 
     def _validate_dimension(self, value: int, name: str) -> None:
         """Validates that a dimension is a positive multiple of SCREEN_RATIO."""
         if value % self.SCREEN_RATIO != 0 or value <= 0:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"System.Matrix.{name} must be a positive multiple of {self.SCREEN_RATIO}."
             )
 
     def _init_display_settings(self) -> None:
         """Initializes the display settings from configuration."""
-        self.led_rows = Configuration.get("System", "Matrix", "led_rows", required=True)
+        self.led_rows = self._config.get("System", "Matrix", "led_rows", required=True)
         self._validate_dimension(self.led_rows, "led_rows")
 
-        self.led_cols = Configuration.get("System", "Matrix", "led_cols", required=True)
+        self.led_cols = self._config.get("System", "Matrix", "led_cols", required=True)
         self._validate_dimension(self.led_cols, "led_cols")
 
-        brightness = Configuration.get("System", "Matrix", "brightness", required=True)
+        brightness = self._config.get("System", "Matrix", "brightness", required=True)
         if brightness < self._state.BRIGHTNESS_MIN or brightness > self._state.BRIGHTNESS_MAX:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"System.Matrix.brightness must be between "
                 f"{self._state.BRIGHTNESS_MIN} and {self._state.BRIGHTNESS_MAX}."
             )
         self._state.brightness = brightness
 
-        self.disable_hardware_pulsing = Configuration.get(
+        self.disable_hardware_pulsing = self._config.get(
             "System", "Matrix", "disable_hardware_pulsing", required=True
         )
         if not isinstance(self.disable_hardware_pulsing, bool):
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 "System.Matrix.disable_hardware_pulsing must be a boolean value."
             )
 
-        self.hardware_mapping = Configuration.get(
+        self.hardware_mapping = self._config.get(
             "System", "Matrix", "hardware_mapping", required=True
         )
         if self.hardware_mapping not in self.VALID_HARDWARE_MAPPINGS:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"System.Matrix.hardware_mapping must be one of: "
                 f"{', '.join(self.VALID_HARDWARE_MAPPINGS)}."
             )
 
-        self.refresh_rate = Configuration.get("System", "Matrix", "refresh_rate", required=True)
+        self.refresh_rate = self._config.get("System", "Matrix", "refresh_rate", required=True)
         if self.refresh_rate <= 0:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 "System.Matrix.refresh_rate must be a positive number."
             )
 

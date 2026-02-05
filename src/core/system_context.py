@@ -36,7 +36,7 @@ class SystemContext:
 
         self.config = Configuration()
         self.state = SystemState()
-        self.display = DisplayController(use_emulator=use_emulator)
+        self.display = DisplayController(self.config, use_emulator=use_emulator)
         self.input_controller = InputController(self.config)
 
         SystemContext._initialized = True
