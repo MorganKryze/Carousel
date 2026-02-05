@@ -8,10 +8,10 @@ from typing import Any, Dict, List
 import websocket
 from loguru import logger
 
-from config import Configuration
+from core.config import Configuration
 from enums.service_status import ServiceStatus
 from models.module import Module
-from webserver import WebServer
+from core.webserver import WebServer
 
 
 class Notifications(Module):
@@ -22,14 +22,14 @@ class Notifications(Module):
         )
         if len(self.app_white_list) == 0:
             logger.warning(
-                "[Notifications Module] No applications found in the white list, no notifications will be received."
+                "No applications found in the white list, no notifications will be received."
             )
         self.websocket_url: str = Configuration.get_from_module(
             self.__class__.__name__, "websocket_url"
         )
         if not self.websocket_url:
             logger.error(
-                "[Notifications Module] Websocket URL is not set, setting the module on error."
+                "Websocket URL is not set, setting the module on error."
             )
             self.status = ServiceStatus.ERROR_MODULE_CONFIG
         self.notifications_list: List[Notification] = []
@@ -40,29 +40,29 @@ class Notifications(Module):
         )
         if not self.retry_delay_on_error or self.retry_delay_on_error <= 0:
             logger.error(
-                "[Notifications Module] Retry delay on error is not set or invalid, setting the module on error."
+                "Retry delay on error is not set or invalid, setting the module on error."
             )
             self.status = ServiceStatus.ERROR_MODULE_CONFIG
         Notification.retry_delay_on_error = self.retry_delay_on_error
 
         if not self.self_test():
             logger.error(
-                "[Notifications Module] Self-test failed, setting the module on error."
+                "Self-test failed, setting the module on error."
             )
             self.status = ServiceStatus.ERROR_MODULE_CONFIG
 
         if self.status == ServiceStatus.ERROR_MODULE_CONFIG:
             logger.error(
-                "[Notifications Module] Configuration error, module will not start."
+                "Configuration error, module will not start."
             )
             return
-        logger.debug("[Notifications Module] Starting websocket service")
+        logger.debug("Starting websocket service")
         Thread(
             target=Notification.start_service,
             args=(self.notification_queue, self.websocket_url, self.app_white_list),
         ).start()
 
-        logger.info("[Notifications Module] Initialized")
+        logger.info("Initialized")
         self.status = ServiceStatus.RUNNING
 
     def self_test(self) -> bool:
@@ -72,11 +72,11 @@ class Notifications(Module):
 
         :returns: bool: True if the self-test passes, False otherwise.
         """
-        logger.info("[Notifications Module] Performing self-test...")
+        logger.info("Performing self-test...")
         try:
             if not WebServer.check_internet_connectivity():
                 logger.error(
-                    "[Notifications Module] No internet connectivity detected."
+                    "No internet connectivity detected."
                 )
                 self.status = ServiceStatus.ERROR_NO_INTERNET
                 return False
@@ -84,18 +84,18 @@ class Notifications(Module):
             ws = websocket.WebSocket()
             ws.connect(self.websocket_url)
             ws.close()
-            logger.info("[Notifications Module] Websocket service is reachable.")
+            logger.info("Websocket service is reachable.")
             return True
 
         except (ConnectionRefusedError, ConnectionError, OSError) as e:
             # Connection issues, invalid address, DNS resolution failed
-            logger.error(f"[Notifications Module] Connection error: {e}")
+            logger.error(f"Connection error: {e}")
             self.status = ServiceStatus.ERROR_MODULE_CONFIG
             return False
 
         except Exception as e:
             logger.error(
-                f"[Notifications Module] Unexpected error during self-test: {e}"
+                f"Unexpected error during self-test: {e}"
             )
             self.status = ServiceStatus.ERROR_MODULE_INTERNAL
             return False
@@ -112,7 +112,7 @@ class Notifications(Module):
         need_to_sort = False
         while not self.notification_queue.empty():
             new_noti: Notification = self.notification_queue.get()
-            logger.debug(f"[Notifications Module] Processing notification: {new_noti}")
+            logger.debug(f"Processing notification: {new_noti}")
             if new_noti.add_to_count:
                 found = any(
                     noti.noti_id == new_noti.noti_id for noti in self.notifications_list
@@ -121,7 +121,7 @@ class Notifications(Module):
                     need_to_sort = True
                     self.notifications_list.append(new_noti)
                     logger.info(
-                        f"[Notifications Module] Added new notification: {new_noti}"
+                        f"Added new notification: {new_noti}"
                     )
             else:
                 self.notifications_list = [
@@ -129,11 +129,11 @@ class Notifications(Module):
                     for noti in self.notifications_list
                     if noti.noti_id != new_noti.noti_id
                 ]
-                logger.info(f"[Notifications Module] Removed notification: {new_noti}")
+                logger.info(f"Removed notification: {new_noti}")
 
         if need_to_sort:
             self.notifications_list.sort(key=cmp_to_key(Notification.compare))
-            logger.debug("[Notifications Module] Sorted notification list")
+            logger.debug("Sorted notification list")
 
         return self.notifications_list
 
@@ -203,7 +203,7 @@ class Notification:
             noti_queue (Queue): The notification queue.
             app_white_list (dict): The application white list.
         """
-        logger.debug(f"[Notifications Module] Received message: {message}")
+        logger.debug(f"Received message: {message}")
         message = json.loads(message)
 
         if message["type"] == "push":
@@ -221,7 +221,7 @@ class Notification:
                         )
                     )
                     logger.info(
-                        f"[Notifications Module] Added new notification from {contents['package_name']}"
+                        f"Added new notification from {contents['package_name']}"
                     )
                 elif contents["type"] == "dismissal":
                     noti_queue.put(
@@ -235,7 +235,7 @@ class Notification:
                         )
                     )
                     logger.info(
-                        f"[Notifications Module] Dismissed notification from {contents['package_name']}"
+                        f"Dismissed notification from {contents['package_name']}"
                     )
 
     @classmethod
@@ -270,7 +270,7 @@ class Notification:
         Args:
             _ (WebSocketApp): The websocket app (unused).
         """
-        logger.warning("[Notifications Module] Websocket closed")
+        logger.warning("Websocket closed")
 
     @classmethod
     def start_service(
@@ -284,7 +284,7 @@ class Notification:
             pushbullet_ws (str): The pushbullet websocket URL.
             app_white_list (dict): The application white list.
         """
-        logger.info("[Notifications Module] Starting websocket service")
+        logger.info("Starting websocket service")
         ws = websocket.WebSocket(
             pushbullet_ws,
             on_message=lambda ws, message: cls.on_message(

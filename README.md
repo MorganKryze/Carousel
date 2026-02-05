@@ -17,26 +17,17 @@ Carousel is a Raspberry Pi Zero-powered LED matrix display framework designed to
 - [ ] Spotify player[^3]
 - [ ] Stocks & crypto
 - [ ] Youtube subscribers count
-- [ ] ...
 
-### Functionalities
-
-- [x] Logging system
-- [x] One-file configuration
-- [x] Makefile
-- [ ] Comprehensive documentation to add new apps
-- [ ] Web interface to manage the apps
-- [ ] CAD files for 3D printing
-- [ ] ...
+Feel free to suggest new apps by [creating an issue](https://github.com/MorganKryze/Carousel/issues) on the repository!
 
 ## Documentation
 
 Comprehensive guides to help you get started:
 
-- [Wiring Guide](./docs/wiring.md)
-- [Installation Guide](./docs/installation.md)
-- [Configuration Guide](./docs/configuration.md)
-- [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
+1. [Wiring Guide](./docs/wiring.md)
+2. [Installation Guide](./docs/installation.md)
+3. [Configuration Guide](./docs/configuration.md)
+4. [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
 
 ## Troubleshooting
 
@@ -56,11 +47,6 @@ We would like to express our gratitude to the following individuals for their co
 - [Ty Porter](https://github.com/ty-porter): for bringing public [Allen's lab's project](https://github.com/ty-porter/matrix-dashboard) source code and making it available to the community.
 - [Henner Zeller](https://github.com/hzeller): for the `rpi-rgb-led-matrix` library, which is the core of the communication between the Raspberry Pi and the led matrix.
 - [Milk And Espresso](https://m.twitch.tv/milkandespresso/about): for making some of the original background images.
-
-Additionally, we would like to thank the following people for their contributions to the project:
-
-- [Dimitry Siebert](https://github.com/foukouda): for bringing the project to life with his CAO expertise and PCB design skills.
-- [Yann M. Vidamment](https://github.com/MorganKryze): for adapting Allen's lab project to our needs and vision regarding the software part of the project.
 
 Finally, we would like to thank all the people who tried the project and gave us feedback to improve it.
 

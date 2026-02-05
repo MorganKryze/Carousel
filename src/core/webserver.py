@@ -7,8 +7,8 @@ from typing import Any, Dict
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from loguru import logger
 
-from config import Configuration
-from path import PathTo
+from core.config import Configuration
+from core.path import PathTo
 
 
 class WebServer:

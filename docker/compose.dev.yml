@@ -1,23 +1,18 @@
 services:
-  Carousel:
-    container_name: Carousel_dev
+  carousel:
+    container_name: carousel_dev
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    command: python -m carousel --debug
+    command: python src --debug
     restart: unless-stopped
     user: root
     privileged: true
     devices:
-      - /dev/gpiomem:/dev/gpiomem
       - /dev/mem:/dev/mem
+      - /dev/gpiomem:/dev/gpiomem
       - /dev/gpiochip0:/dev/gpiochip0
-      - /dev/spidev0.0:/dev/spidev0.0
-      - /dev/spidev0.1:/dev/spidev0.1
     volumes:
-      - /sys:/sys
-      - /sys/class/gpio:/sys/class/gpio
-      # Persistent app data
-      - ./configs:/app/configs
-      - ./logs:/app/logs
+      - ../configs:/app/configs
+      - ../logs:/app/logs
     network_mode: host

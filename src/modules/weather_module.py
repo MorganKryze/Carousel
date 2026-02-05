@@ -7,7 +7,7 @@ from loguru import logger
 from pyowm.owm import OWM
 from pyowm.weatherapi25.weather_manager import WeatherManager
 
-from config import Configuration
+from core.config import Configuration
 from enums.variable_importance import Importance
 
 # Constants
@@ -23,10 +23,10 @@ class WeatherModule:
             "Modules", "Weather", "enabled", Importance.REQUIRED
         )
         if not self.enabled:
-            logger.info("[Weather Module] Disabled")
+            logger.info("Disabled")
             return
 
-        logger.debug("[Weather Module] Initializing")
+        logger.debug("Initializing")
         self.current_weather: Optional[Dict[str, Any]] = None
         self.weather_queue: LifoQueue = LifoQueue()
 
@@ -44,7 +44,7 @@ class WeatherModule:
         )
         if self.temperature_unit not in ["celsius", "fahrenheit"]:
             logger.error(
-                "[Weather Module] Invalid temperature unit. Must be 'celsius' or 'fahrenheit'."
+                "Invalid temperature unit. Must be 'celsius' or 'fahrenheit'."
             )
             self.enabled = False
             return
@@ -61,9 +61,9 @@ class WeatherModule:
                 ),
             )
             self.update_thread.start()
-            logger.info("[Weather Module] Initialized")
+            logger.info("Initialized")
         except Exception as e:
-            logger.error(f"[Weather Module] Initialization error: {e}")
+            logger.error(f"Initialization error: {e}")
             self.enabled = False
 
     def get_weather(self) -> Optional[Dict[str, Any]]:
@@ -120,6 +120,6 @@ def update_weather(
                 weather_queue.put(weather_manager.one_call(lat=latitude, lon=longitude))
                 last_update_time = current_time
             except Exception as e:
-                logger.error(f"[Weather Module] Error updating weather: {e}")
+                logger.error(f"Error updating weather: {e}")
             except Exception as e:
-                logger.error(f"[Weather Module] Error updating weather: {e}")
+                logger.error(f"Error updating weather: {e}")

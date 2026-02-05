@@ -7,11 +7,11 @@ from loguru import logger
 from PIL import Image, ImageDraw
 from scipy.signal import convolve2d
 
-from board import Board
-from config import Configuration
+from io.display_controller import DisplayController
+from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.variable_importance import Importance
-from path import PathTo
+from core.path import PathTo
 
 
 class GameOfLifeScreen:
@@ -81,12 +81,12 @@ class GameOfLifeScreen:
         end_time = datetime.now() + timedelta(seconds=0.1)
 
         old_state = self.state
-        frame = Image.new("RGB", (Board.led_cols, Board.led_rows), (0, 0, 0))
+        frame = Image.new("RGB", (DisplayController().led_cols, DisplayController().led_rows), (0, 0, 0))
         draw = ImageDraw.Draw(frame)
 
         new_state = life_step(old_state)
-        for i in range(Board.led_rows):
-            for j in range(Board.led_cols):
+        for i in range(DisplayController().led_rows):
+            for j in range(DisplayController().led_cols):
                 if new_state[i][j] == 1:
                     draw.point((j, i), fill=self.color)
 
@@ -132,7 +132,7 @@ def get_num_neighbors(state: np.ndarray, i: int, j: int) -> int:
         for dj in [-1, 0, 1]:
             if di == 0 and dj == 0:
                 continue
-            if state[(i + di) % Board.led_rows][(j + dj) % Board.led_cols] == 1:
+            if state[(i + di) % DisplayController().led_rows][(j + dj) % DisplayController().led_cols] == 1:
                 num_on += 1
 
     return num_on
@@ -145,9 +145,9 @@ def generate_random_state() -> np.ndarray:
     Returns:
         np.ndarray: The random initial state.
     """
-    initial_state = np.zeros((Board.led_rows, Board.led_cols), dtype=int)
-    for i in range(Board.led_rows):
-        for j in range(Board.led_cols):
+    initial_state = np.zeros((DisplayController().led_rows, DisplayController().led_cols), dtype=int)
+    for i in range(DisplayController().led_rows):
+        for j in range(DisplayController().led_cols):
             initial_state[i][j] = random.randint(0, 1)
     return initial_state
 
@@ -190,4 +190,4 @@ def convert_image(location: str):
     np.save(
         location + ".npy", (image_array[0:height, 0:width, 0] // 255).astype("int32")
     )
-    )
+    

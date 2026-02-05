@@ -4,13 +4,13 @@ from typing import Callable, Dict, List
 from loguru import logger
 from PIL import Image, ImageDraw, ImageSequence
 
-from board import Board
-from config import Configuration
+from io.display_controller import DisplayController
+from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from path import PathTo
+from core.path import PathTo
 
 WHITE = (230, 255, 255)
 
@@ -35,10 +35,10 @@ class GifPlayer(Application):
         if self.play_limit < 1:
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                "[GifPlayer App] Play limit must be greater than or equal to 1."
+                "Play limit must be greater than or equal to 1."
             )
-        self.led_cols = Board.led_cols
-        self.led_rows = Board.led_rows
+        self.led_cols = DisplayController().led_cols
+        self.led_rows = DisplayController().led_rows
         self.animations = self.load_animations()
         if not self.animations:
             self.status = ServiceStatus.ERROR_APP_CONFIG
@@ -74,11 +74,11 @@ class GifPlayer(Application):
         super().generate(tilt_state, encoder_input)
         try:
             if encoder_input == EncoderInput.LONG_PRESS:
-                logger.debug("[GifPlayer App] Toggling selection mode.")
+                logger.debug("Toggling selection mode.")
                 self.selection_mode = not self.selection_mode
 
             if encoder_input == EncoderInput.DOUBLE_PRESS:
-                logger.debug("[GifPlayer App] Toggling auto play mode.")
+                logger.debug("Toggling auto play mode.")
                 self.auto_play_mode = not self.auto_play_mode
                 if self.auto_play_mode:
                     self.play_count = 0
@@ -88,13 +88,13 @@ class GifPlayer(Application):
 
             if self.selection_mode:
                 if encoder_input == EncoderInput.INCREASE_CLOCKWISE:
-                    logger.debug("[GifPlayer App] Switching to next GIF.")
+                    logger.debug("Switching to next GIF.")
                     self.current_animation_index = (
                         self.current_animation_index + 1
                     ) % len(self.animations)
                     self.current_frame_index = 0
                 elif encoder_input == EncoderInput.DECREASE_COUNTERCLOCKWISE:
-                    logger.debug("[GifPlayer App] Switching to previous GIF.")
+                    logger.debug("Switching to previous GIF.")
                     self.current_animation_index = (
                         self.current_animation_index - 1
                     ) % len(self.animations)
@@ -114,7 +114,7 @@ class GifPlayer(Application):
                 frame = current_gif[self.current_frame_index].convert("RGB")
             except IndexError:
                 logger.debug(
-                    "[GifPlayer App] Reached the end of the GIF. Restarting from the beginning."
+                    "Reached the end of the GIF. Restarting from the beginning."
                 )
                 self.current_frame_index = 0
                 frame = current_gif[self.current_frame_index].convert("RGB")
@@ -148,7 +148,7 @@ class GifPlayer(Application):
             return frame
         except Exception as e:
             self.status = ServiceStatus.ERROR_APP_INTERNAL
-            logger.error(f"[GifPlayer App] Error generating frame: {e}")
+            logger.error(f"Error generating frame: {e}")
             return self.generate_on_error()
 
     def load_animations(self) -> List[Image.Image]:
@@ -157,16 +157,16 @@ class GifPlayer(Application):
 
         :return: List[Image.Image]: List of loaded GIF images.
         """
-        logger.debug("[GifPlayer App] Loading GIFs.")
+        logger.debug("Loading GIFs.")
         try:
             result = []
             for filename in os.listdir(PathTo.GIF_FOLDER):
                 if filename.endswith(".gif"):
-                    logger.debug(f"[GifPlayer App] Loading GIF: {filename}")
+                    logger.debug(f"Loading GIF: {filename}")
                     result.append(Image.open(os.path.join(PathTo.GIF_FOLDER, filename)))
 
-            logger.info(f"[GifPlayer App] All {len(result)} GIFs loaded successfully.")
+            logger.info(f"All {len(result)} GIFs loaded successfully.")
             return result
         except Exception as e:
-            logger.error(f"[GifPlayer App] Error loading GIFs: {e}")
+            logger.error(f"Error loading GIFs: {e}")
             return []

@@ -8,7 +8,7 @@ from typing import Any, Dict
 import yaml
 from loguru import logger
 
-from path import PathTo
+from core.path import PathTo
 
 
 class Configuration:
@@ -22,7 +22,7 @@ class Configuration:
         """
         Load configuration from file or create a new one from the template if it doesn't exist.
         """
-        logger.info("[Config] Loading configuration...")
+        logger.info("Loading configuration...")
         cls.latest_generation_id = cls.get_latest_generation_id()
         cls.latest_working_generation_id = cls.get_latest_working_generation_id()
 
@@ -33,7 +33,7 @@ class Configuration:
         try:
             with open(cls.file_path, "r") as f:
                 cls.configuration_dictionary = yaml.safe_load(f)
-            logger.info("[Config] Successfully loaded the configuration file.")
+            logger.info("Successfully loaded the configuration file.")
         except Exception:
             cls.critical_exit(f"Failed to load configuration file '{cls.file_path}'")
 
@@ -42,19 +42,19 @@ class Configuration:
         """
         Initialize the configuration from a template file.
         """
-        logger.info("[Config] Using template config file to create a new config.")
+        logger.info("Using template config file to create a new config.")
         template_file_path = PathTo.TEMPLATE_CONFIG_FILE
         try:
             with open(template_file_path, "r") as template_file:
                 data = yaml.safe_load(template_file)
-                logger.debug("[Config] Template config file loaded successfully.")
+                logger.debug("Template config file loaded successfully.")
             data["Metadata"]["id"] = 1
             data["Metadata"]["version"] = cls.get_version_from_pyproject()
             # TODO: TZ should come from the execution environment or config
             data["Metadata"]["created_at"] = datetime.now().isoformat(
                 sep=" ", timespec="minutes"
             )
-            logger.debug("[Config] Metadata updated with current time and version.")
+            logger.debug("Metadata updated with current time and version.")
             if not cls.create_new_config_generation(data):
                 cls.critical_exit(
                     "Failed to create a new configuration generation from the template."
@@ -78,15 +78,15 @@ class Configuration:
         """
         if not os.path.exists(PathTo.GENERATIONS_FOLDER):
             os.makedirs(PathTo.GENERATIONS_FOLDER)
-            logger.debug("[Config] Generations folder created.")
+            logger.debug("Generations folder created.")
         if config["Metadata"]["id"] != cls.latest_generation_id + 1:
             logger.error(
-                "[Config] The provided configuration ID does not match the expected next ID."
+                "The provided configuration ID does not match the expected next ID."
             )
             return False
         if config["Metadata"]["id"] > 1 and config["Metadata"]["origin"] != "user":
             logger.error(
-                "[Config] The provided configuration is not from a user and cannot be used to create a new generation."
+                "The provided configuration is not from a user and cannot be used to create a new generation."
             )
             config["Metadata"]["origin"] = "user"
 
@@ -100,10 +100,10 @@ class Configuration:
         is_saved = cls.save(config)
         if not is_saved:
             logger.error(
-                f"[Config] Failed to save the new generation at {generation_file_path}"
+                f"Failed to save the new generation at {generation_file_path}"
             )
             return False
-        logger.info(f"[Config] New generation created: {generation_file_path}")
+        logger.info(f"New generation created: {generation_file_path}")
         return True
 
     @classmethod
@@ -121,19 +121,19 @@ class Configuration:
         try:
             if os.path.exists(normal_path) and not is_broken:
                 logger.warning(
-                    f"[Config] Configuration file already exists: {normal_path}. Overwriting."
+                    f"Configuration file already exists: {normal_path}. Overwriting."
                 )
             with open(normal_path, "w") as f:
                 yaml.safe_dump(config, f, default_flow_style=False)
-            logger.info(f"[Config] Configuration saved to {normal_path}")
+            logger.info(f"Configuration saved to {normal_path}")
             if is_broken:
                 os.rename(normal_path, broken_path)
                 logger.info(
-                    f"[Config] Configuration marked as broken and saved to {broken_path}"
+                    f"Configuration marked as broken and saved to {broken_path}"
                 )
             return True
         except Exception as e:
-            logger.error(f"[Config] Failed to save configuration: {e}")
+            logger.error(f"Failed to save configuration: {e}")
             return False
 
     @classmethod
@@ -154,7 +154,7 @@ class Configuration:
             if isinstance(current, dict) and key in current:
                 current = current[key]
             else:
-                logger.debug(f"[Config] Key path not found: {' -> '.join(keys)}")
+                logger.debug(f"Key path not found: {' -> '.join(keys)}")
                 if required and default is None:
                     cls.critical_exit(
                         f"Required key path not found: {' -> '.join(keys)}"
@@ -164,7 +164,7 @@ class Configuration:
         if required and current is None:
             cls.critical_exit(f"Required key path has None value: {' -> '.join(keys)}")
 
-        logger.debug(f"[Config] Found value at: {' -> '.join(keys)}")
+        logger.debug(f"Found value at: {' -> '.join(keys)}")
         return current
 
     @classmethod
@@ -243,7 +243,7 @@ class Configuration:
         :return: True if the value was set successfully, False otherwise.
         """
         if not keys:
-            logger.error("[Config] No keys provided to set a value.")
+            logger.error("No keys provided to set a value.")
             return False
         try:
             current = cls.configuration_dictionary
@@ -253,10 +253,10 @@ class Configuration:
                 current = current[key]
 
             current[keys[-1]] = value
-            logger.info(f"[Config] Set value at: {' -> '.join(keys)} to {value}")
+            logger.info(f"Set value at: {' -> '.join(keys)} to {value}")
             return True
         except Exception as e:
-            logger.error(f"[Config] Failed to set value at {' -> '.join(keys)}: {e}")
+            logger.error(f"Failed to set value at {' -> '.join(keys)}: {e}")
             return False
 
     @classmethod
@@ -285,7 +285,7 @@ class Configuration:
             ]
         except FileNotFoundError:
             logger.error(
-                f"[Config] Generations folder not found: {PathTo.GENERATIONS_FOLDER}"
+                f"Generations folder not found: {PathTo.GENERATIONS_FOLDER}"
             )
             return []
 
@@ -308,9 +308,9 @@ class Configuration:
                 if generation_id > latest_id:
                     latest_id = generation_id
             except (ValueError, IndexError):
-                logger.error(f"[Config] Invalid generation file name: {file}")
+                logger.error(f"Invalid generation file name: {file}")
 
-        logger.debug(f"[Config] Latest generation ID found: {latest_id}")
+        logger.debug(f"Latest generation ID found: {latest_id}")
         return latest_id
 
     @classmethod
@@ -335,9 +335,9 @@ class Configuration:
                 if generation_id > latest_id:
                     latest_id = generation_id
             except (ValueError, IndexError):
-                logger.error(f"[Config] Invalid generation file name: {file}")
+                logger.error(f"Invalid generation file name: {file}")
 
-        logger.debug(f"[Config] Latest working generation ID found: {latest_id}")
+        logger.debug(f"Latest working generation ID found: {latest_id}")
         return latest_id
 
     @classmethod
@@ -371,7 +371,7 @@ class Configuration:
 
             return local_hostname, local_ip
         except Exception as e:
-            logger.warning(f"[Config] Failed to retrieve hostname or public IP: {e}")
+            logger.warning(f"Failed to retrieve hostname or public IP: {e}")
             return "unknown", "unknown"
         finally:
             s.close()
@@ -392,19 +392,19 @@ class Configuration:
             if cls.latest_generation_id == 1:
                 os.remove(original_path)
                 logger.debug(
-                    "[Config] Deleting first generation, will be rebuilt from template in the next boot."
+                    "Deleting first generation, will be rebuilt from template in the next boot."
                 )
                 return
             if not cls.save(cls.configuration_dictionary, is_broken=True):
                 logger.error(
-                    f"[Config] Failed to save broken configuration to {broken_path}"
+                    f"Failed to save broken configuration to {broken_path}"
                 )
             logger.info(
-                f"[Config] Current generation flagged as broken and saved to {broken_path}"
+                f"Current generation flagged as broken and saved to {broken_path}"
             )
 
         except Exception as e:
-            logger.error(f"[Config] Failed to flag generation as broken: {e}")
+            logger.error(f"Failed to flag generation as broken: {e}")
 
     @classmethod
     def critical_exit(cls, reason: str) -> None:
@@ -415,6 +415,6 @@ class Configuration:
         :param reason: The reason for the critical exit.
         """
         cls.flag_current_generation_as_broken(reason)
-        logger.critical(f"[Config] Critical error occurred: {reason}")
-        logger.critical("[Config] Exiting program.")
+        logger.critical(f"Critical error occurred: {reason}")
+        logger.critical("Exiting program.")
         sys.exit(1)

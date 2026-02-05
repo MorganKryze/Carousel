@@ -2,7 +2,7 @@
 
 from loguru import logger
 
-from config import Configuration
+from core.config import Configuration
 from enums.service_status import ServiceStatus
 
 
@@ -18,7 +18,7 @@ class Module:
         self.description: str = Configuration.get_from_module(
             self.__class__.__name__, "description", required=True
         )
-        logger.debug(f"[{self.__class__.__name__}] Initializing configuration...")
+        logger.debug("Initializing configuration...")
 
     def self_test(self) -> None:
         """
@@ -26,5 +26,5 @@ class Module:
         This method should be overridden by subclasses to implement specific self-test logic.
         """
         raise NotImplementedError(
-            f"[{self.__class__.__name__}] self_test method not implemented. Please implement this method logic in the subclass."
+            "self_test method not implemented. Please implement this method logic in the subclass."
         )

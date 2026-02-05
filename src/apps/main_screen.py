@@ -8,13 +8,13 @@ from dateutil import tz
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from board import Board
-from config import Configuration
+from io.display_controller import DisplayController
+from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from path import PathTo
+from core.path import PathTo
 
 light_pink = (255, 219, 218)
 dark_pink = (219, 127, 142)
@@ -56,7 +56,7 @@ class MainScreen(Application):
         if self.use_24_hour not in [True, False]:
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                "[MainScreen App] Invalid use_24_hour value. Must be True or False."
+                "Invalid use_24_hour value. Must be True or False."
             )
         self.date_format = Configuration.get_from_app_config(
             self.__class__.__name__, "date_format", required=True
@@ -64,7 +64,7 @@ class MainScreen(Application):
         if self.date_format != "MM-DD" and self.date_format != "DD-MM":
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                "[MainScreen App] Invalid date format. Possible values are 'MM-DD' or 'DD-MM'."
+                "Invalid date format. Possible values are 'MM-DD' or 'DD-MM'."
             )
         self.cycle_duration_in_seconds = Configuration.get_from_app_config(
             self.__class__.__name__, "cycle_duration_in_seconds", required=True
@@ -72,14 +72,14 @@ class MainScreen(Application):
         if self.cycle_duration_in_seconds <= 0:
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                "[MainScreen App] Invalid cycle duration in seconds. Must be greater than 0."
+                "Invalid cycle duration in seconds. Must be greater than 0."
             )
         try:
             self.font = ImageFont.truetype(PathTo.FONT_FILE, FONT_SIZE)
-            logger.info("[MainScreen App] Font loaded successfully.")
+            logger.info("Font loaded successfully.")
         except Exception as e:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(f"[MainScreen App] Failed to load font: {e}")
+            logger.error(f"Failed to load font: {e}")
 
         self.lastGenerateCall = None
         self.is_on_cycle = True
@@ -104,7 +104,7 @@ class MainScreen(Application):
             }
         except Exception as e:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(f"[MainScreen App] Failed to load backgrounds: {e}")
+            logger.error(f"Failed to load backgrounds: {e}")
 
         self.theme_list = [
             self.generate_sakura_bg,
@@ -120,6 +120,15 @@ class MainScreen(Application):
 
         self.status = ServiceStatus.RUNNING
         logger.info(f"[{self.__class__.__name__}] Running.")
+
+        self.last_sakura_frame = None
+        self.last_sakura_time = None
+        self.last_sakura_on_cycle = None
+
+        self.last_cloud_frame = None
+        self.last_cloud_time = None
+
+        self.last_forest_frame = None
 
     def generate(self, tilt_state: TiltState, encoder_input: EncoderInput) -> Image:
         """
@@ -158,19 +167,30 @@ class MainScreen(Application):
             frame = self.theme_list[self.currentIdx % len(self.theme_list)]()
 
             if self.selectMode:
+                frame = frame.copy()
                 draw = ImageDraw.Draw(frame)
                 draw.rectangle(
-                    (0, 0, Board.led_cols - 1, Board.led_rows - 1), outline=white
+                    (0, 0, DisplayController().led_cols - 1, DisplayController().led_rows - 1), outline=white
                 )
 
             return frame
         except Exception as e:
             self.status = ServiceStatus.ERROR_APP_INTERNAL
-            logger.error(f"[MainScreen App] Error generating frame: {e}")
+            logger.error(f"Error generating frame: {e}")
             return self.generate_on_error()
 
     def generate_sakura_bg(self):
         current_time = datetime.now(tz=tz.tzlocal())
+
+        if (
+            self.last_sakura_frame is not None
+            and self.last_sakura_time is not None
+            and current_time.minute == self.last_sakura_time.minute
+            and current_time.hour == self.last_sakura_time.hour
+            and self.is_on_cycle == self.last_sakura_on_cycle
+        ):
+            return self.last_sakura_frame
+
         month = current_time.month
         day = current_time.day
         hours = current_time.hour
@@ -223,10 +243,24 @@ class MainScreen(Application):
 
         #     self.old_noti_list = noti_list
 
+        #     self.old_noti_list = noti_list
+
+        self.last_sakura_frame = frame
+        self.last_sakura_time = current_time
+        self.last_sakura_on_cycle = self.is_on_cycle
+
         return frame
 
     def generate_cloud_bg(self):
         currentTime = datetime.now(tz=tz.tzlocal())
+
+        if (
+            self.last_cloud_frame is not None
+            and self.last_cloud_time is not None
+            and currentTime.second == self.last_cloud_time.second
+        ):
+            return self.last_cloud_frame
+
         month = currentTime.month
         day = currentTime.day
         hours = currentTime.hour
@@ -254,7 +288,7 @@ class MainScreen(Application):
         #     self.old_noti_list = noti_list.copy()
 
         if len(self.queued_frames) == 0:
-            frame = Image.new("RGBA", (Board.led_cols, Board.led_rows), washed_out_navy)
+            frame = Image.new("RGBA", (DisplayController().led_cols, DisplayController().led_rows), washed_out_navy)
         else:
             frame = self.queued_frames.pop(0)
         draw = ImageDraw.Draw(frame)
@@ -298,6 +332,7 @@ class MainScreen(Application):
                 font=self.font,
             )
             draw.text(
+              
                 (date_x_off + 7, date_y_off), ".", orange_tinted_white, font=self.font
             )
             draw.text(
@@ -323,10 +358,16 @@ class MainScreen(Application):
                 font=self.font,
             )
 
+        self.last_cloud_frame = frame
+        self.last_cloud_time = currentTime
+
         return frame.convert("RGB")
 
     def generate_forest_bg(self):
+        if self.last_forest_frame is not None:
+            return self.last_forest_frame
         frame = self.backgrounds["forest"].copy()
+        self.last_forest_frame = frame
         return frame
 
 

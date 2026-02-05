@@ -1,0 +1,31 @@
+services:
+  carousel:
+    image: ghcr.io/morgankryze/carousel:stable
+    container_name: carousel
+    restart: unless-stopped
+    user: root
+    privileged: true
+    devices:
+      - /dev/mem:/dev/mem
+      - /dev/gpiomem:/dev/gpiomem
+      - /dev/gpiochip0:/dev/gpiochip0
+    volumes:
+      - ../configs:/app/configs
+      - ../logs:/app/logs
+    network_mode: host
+    labels:
+      com.centurylinklabs.watchtower.enable: true
+    depends_on:
+      - watchtower
+  
+  watchtower:
+    container_name: watchtower
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - '--interval'
+      - '86400'
+      - '--label-enable'
+      - '--cleanup'

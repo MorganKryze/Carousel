@@ -72,7 +72,7 @@ function display_header() {
 
     sleep $LOW_DELAY
     txt
-    txt "Open-source $REPOSITORY_NAME led matrix dashboard setup script v$latest_version"
+    txt "Open-source $REPOSITORY_NAME led matrix dashboard setup script for v$latest_version"
     sleep $LOW_DELAY
     txt "This script will setup the environement, docker and the project on the target device."
     sleep $LOW_DELAY
@@ -373,14 +373,48 @@ function setup_project() {
     sleep $LOW_DELAY
 }
 
+function setup_docker_environment() {
+    info "Setting up Docker environment..."
+
+    local project_dir="$HOME/$REPOSITORY_NAME"
+    
+    if [ ! -d "$project_dir" ]; then
+        error "Project directory not found. Run setup_project first."
+        return 1
+    fi
+
+    cd "$project_dir"
+
+    if [ ! -f "docker/compose.yml" ]; then
+        warning "docker/compose.yml not found. Skipping Docker environment setup."
+        return 0
+    fi
+
+    info "Validating Docker Compose configuration..."
+    if docker compose -f docker/compose.yml config >/dev/null 2>&1; then
+        success "Docker Compose configuration is valid."
+    else
+        warning "Docker Compose configuration validation failed. Please check docker/compose.yml"
+    fi
+    
+    success "Docker environment setup complete."
+    sleep $LOW_DELAY
+}
+
 function display_next_steps() {
-    txt "Next steps:"
-    txt "1. After the device reboots, log back in."
-    txt "2. Navigate to the project directory: ${BLUE}cd ~/$REPOSITORY_NAME${RESET}"
-    txt "3. Prepare the python environment and install dependencies: ${BLUE}make install${RESET}"
-    txt "4. Build the led interface library: ${BLUE}make build${RESET}"
-    txt "5. Test the library: ${BLUE}make example${RESET}"
-    txt "6. Finally, run the project: ${BLUE}make run${RESET}"
+    txt "Next steps - Choose your deployment method:"
+    txt "View all commands: ${BLUE}make help${RESET}"
+    txt
+    txt "${GREEN}Option 1: Development Mode (Direct Python)${RESET}"
+    txt "1. After reboot, navigate to: ${BLUE}cd ~/$REPOSITORY_NAME${RESET}"
+    txt "2. Setup development environment: ${BLUE}make setup-dev${RESET}"
+    txt "3. Test the library: ${BLUE}make example${RESET}"
+    txt "4. Run the project: ${BLUE}make run${RESET}"
+    txt
+    txt "${GREEN}Option 2: Docker Deployment${RESET}"
+    txt "1. After reboot, navigate to: ${BLUE}cd ~/$REPOSITORY_NAME${RESET}"
+    txt "2. Start the project: ${BLUE}make docker-deploy${RESET}"
+    txt "3. View logs: ${BLUE}make docker-logs${RESET}"
 
     sleep $LOW_DELAY
     warning "The device will reboot in $HIGH_DELAY seconds. Keep this terminal open to continue with the next steps after reboot."
@@ -405,6 +439,8 @@ function main() {
     performance_tweaks
 
     setup_project
+
+    setup_docker_environment
 
     success "$REPOSITORY_NAME setup complete!"
     sleep $LOW_DELAY

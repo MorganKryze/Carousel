@@ -20,17 +20,28 @@ class PathTo:
     STATIC_FOLDER: str = "../resources/web/static"
 
     @classmethod
-    def set_base_directory(cls, base_dir_name: str = "Carousel") -> None:
+    def set_base_directory(cls) -> None:
         """
-        Sets the base directory for the script to the specified directory name.
-
-        :param base_dir_name: The name of the base directory (default is 'Carousel').
+        Sets the base directory for the script by finding the project root.
+        Looks for pyproject.toml as a marker file to identify the project root.
         """
         current_script_path = os.path.abspath(inspect.getfile(inspect.currentframe()))
-        current_script_dir = os.path.dirname(current_script_path)
-        cls.base_directory = os.path.abspath(
-            os.path.join(current_script_dir, "..", "..", base_dir_name)
-        )
+        current_dir = os.path.dirname(current_script_path)
+
+        max_levels = 5
+        for _ in range(max_levels):
+            if os.path.exists(os.path.join(current_dir, "pyproject.toml")):
+                cls.base_directory = current_dir
+                break
+            parent = os.path.dirname(current_dir)
+            if parent == current_dir:
+                break
+            current_dir = parent
+        else:
+            cls.base_directory = os.path.abspath(
+                os.path.join(os.path.dirname(current_script_path), "..")
+            )
+
         os.chdir(cls.base_directory)
         sys.path.append(cls.base_directory)
 
