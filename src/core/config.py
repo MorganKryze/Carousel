@@ -62,7 +62,7 @@ class Configuration:
                 data = yaml.safe_load(template_file)
                 logger.debug("Template config file loaded successfully.")
             data["Metadata"]["id"] = 1
-            data["Metadata"]["version"] = self.get_version_from_pyproject()
+            data["Metadata"]["version"] = get_version_from_pyproject()
             data["Metadata"]["created_at"] = datetime.now().isoformat(
                 sep=" ", timespec="minutes"
             )
