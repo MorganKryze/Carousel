@@ -5,6 +5,7 @@ from loguru import logger
 
 from apps import gif_viewer, main_screen, pomodoro
 from core.system_state import SystemState
+from io.display_controller import DisplayController
 from models.application import Application
 from models.module import Module
 
@@ -189,9 +190,11 @@ class AppManager:
         """
         initial_value: int = SystemState().brightness
         try:
-            SystemState().brightness = min(
-                SystemState.BRIGHTNESS_MAX,
-                SystemState().brightness + SystemState.BRIGHTNESS_STEP,
+            DisplayController().update_brightness(
+                min(
+                    SystemState.BRIGHTNESS_MAX,
+                    SystemState().brightness + SystemState.BRIGHTNESS_STEP,
+                )
             )
             logger.debug(f"Brightness increased to {SystemState().brightness}")
         except Exception as e:
@@ -211,9 +214,11 @@ class AppManager:
         """
         initial_value: int = SystemState().brightness
         try:
-            SystemState().brightness = max(
-                SystemState.BRIGHTNESS_MIN,
-                SystemState().brightness - SystemState.BRIGHTNESS_STEP,
+            DisplayController().update_brightness(
+                max(
+                    SystemState.BRIGHTNESS_MIN,
+                    SystemState().brightness - SystemState.BRIGHTNESS_STEP,
+                )
             )
             logger.debug(f"Brightness decreased to {SystemState().brightness}")
             return True
