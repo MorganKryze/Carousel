@@ -5,7 +5,7 @@ from typing import Callable, Dict
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from core.board import Board
+from io.display_controller import DisplayController
 from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
@@ -75,8 +75,8 @@ class Pomodoro(Application):
             )
         self.active = False
         self.font = ImageFont.truetype(PathTo.FONT_FILE, DEFAULT_FONT_SIZE)
-        self.canvas_width = Board.led_cols
-        self.canvas_height = Board.led_rows
+        self.canvas_width = DisplayController().led_cols
+        self.canvas_height = DisplayController().led_rows
         self.cycle_order = "WSWSWL"
         self.cycle_idx = 0
         self.status = ""

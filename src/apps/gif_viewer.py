@@ -4,7 +4,7 @@ from typing import Callable, Dict, List
 from loguru import logger
 from PIL import Image, ImageDraw, ImageSequence
 
-from core.board import Board
+from io.display_controller import DisplayController
 from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
@@ -37,8 +37,8 @@ class GifPlayer(Application):
             logger.error(
                 "Play limit must be greater than or equal to 1."
             )
-        self.led_cols = Board.led_cols
-        self.led_rows = Board.led_rows
+        self.led_cols = DisplayController().led_cols
+        self.led_rows = DisplayController().led_rows
         self.animations = self.load_animations()
         if not self.animations:
             self.status = ServiceStatus.ERROR_APP_CONFIG

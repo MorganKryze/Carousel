@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional
 from loguru import logger
 
 from apps import gif_viewer, main_screen, pomodoro
-from core.board import Board
+from core.system_state import SystemState
 from models.application import Application
 from models.module import Module
 
@@ -169,14 +169,14 @@ class AppManager:
         :return: bool: True if the display was successfully toggled, False otherwise.
         """
         try:
-            Board.is_display_on = not Board.is_display_on
+            SystemState().is_display_on = not SystemState().is_display_on
             logger.debug(
-                f"Display set to: {'on' if Board.is_display_on else 'off'}"
+                f"Display set to: {'on' if SystemState().is_display_on else 'off'}"
             )
             return True
         except Exception as e:
             logger.error(f"Failed to toggle display: {e}")
-            Board.is_display_on = True
+            SystemState().is_display_on = True
             logger.debug("Display turned off due to error.")
             return False
 
@@ -187,19 +187,18 @@ class AppManager:
 
         :return: bool: True if brightness was successfully increased, False otherwise.
         """
-        initial_value: int = Board.brightness
+        initial_value: int = SystemState().brightness
         try:
-            Board.brightness = min(
-                Board.BRIGHTNESS_MAX,
-                Board.brightness + Board.BRIGHTNESS_STEP,
+            SystemState().brightness = min(
+                SystemState.BRIGHTNESS_MAX,
+                SystemState().brightness + SystemState.BRIGHTNESS_STEP,
             )
-            logger.debug(f"Brightness increased to {Board.brightness}")
-            return True
+            logger.debug(f"Brightness increased to {SystemState().brightness}")
         except Exception as e:
             logger.error(f"Failed to increase brightness: {e}")
-            Board.brightness = initial_value
+            SystemState().brightness = initial_value
             logger.debug(
-                f"Brightness reset to default: {Board.brightness}"
+                f"Brightness reset to default: {SystemState().brightness}"
             )
             return False
 
@@ -210,18 +209,18 @@ class AppManager:
 
         :return: bool: True if brightness was successfully decreased, False otherwise.
         """
-        initial_value: int = Board.brightness
+        initial_value: int = SystemState().brightness
         try:
-            Board.brightness = max(
-                Board.BRIGHTNESS_MIN,
-                Board.brightness - Board.BRIGHTNESS_STEP,
+            SystemState().brightness = max(
+                SystemState.BRIGHTNESS_MIN,
+                SystemState().brightness - SystemState.BRIGHTNESS_STEP,
             )
-            logger.debug(f"Brightness decreased to {Board.brightness}")
+            logger.debug(f"Brightness decreased to {SystemState().brightness}")
             return True
         except Exception as e:
             logger.error(f"Failed to decrease brightness: {e}")
-            Board.brightness = initial_value
+            SystemState().brightness = initial_value
             logger.debug(
-                f"Brightness reset to default: {Board.brightness}"
+                f"Brightness reset to default: {SystemState().brightness}"
             )
             return False

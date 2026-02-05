@@ -8,7 +8,7 @@ from dateutil import tz
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from core.board import Board
+from io.display_controller import DisplayController
 from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
@@ -170,7 +170,7 @@ class MainScreen(Application):
                 frame = frame.copy()
                 draw = ImageDraw.Draw(frame)
                 draw.rectangle(
-                    (0, 0, Board.led_cols - 1, Board.led_rows - 1), outline=white
+                    (0, 0, DisplayController().led_cols - 1, DisplayController().led_rows - 1), outline=white
                 )
 
             return frame
@@ -288,7 +288,7 @@ class MainScreen(Application):
         #     self.old_noti_list = noti_list.copy()
 
         if len(self.queued_frames) == 0:
-            frame = Image.new("RGBA", (Board.led_cols, Board.led_rows), washed_out_navy)
+            frame = Image.new("RGBA", (DisplayController().led_cols, DisplayController().led_rows), washed_out_navy)
         else:
             frame = self.queued_frames.pop(0)
         draw = ImageDraw.Draw(frame)
@@ -332,6 +332,7 @@ class MainScreen(Application):
                 font=self.font,
             )
             draw.text(
+              
                 (date_x_off + 7, date_y_off), ".", orange_tinted_white, font=self.font
             )
             draw.text(

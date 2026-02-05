@@ -7,9 +7,12 @@ from loguru import logger
 from PIL import Image
 
 from core.app_manager import AppManager
-from core.board import Board
+from io.display_controller import DisplayController
+from io.input_controller import InputController
+from core.system_state import SystemState
 from core.config import Configuration
-from core.custom_frames import CustomFrames
+from display.custom_frames import CustomFrames
+from display.animations import Animations
 from core.logs import Logs
 from core.path import PathTo
 from enums.encoder_input import EncoderInput
@@ -34,9 +37,14 @@ def __main__() -> None:
 
     Configuration.load()
 
-    Board.init_system(use_emulator=args.emulator)
+    # Initialize Systems
+    state = SystemState()
+    input_controller = InputController()
+    display = DisplayController(use_emulator=args.emulator)
 
-    Board.loading_animation()
+    # Animations
+    animations = Animations()
+    animations.loading_animation()
 
     AppManager.init_apps()
 
@@ -44,7 +52,7 @@ def __main__() -> None:
     # server = WebServer()
     # TODO: port should be configurable
     # server.start(port=9000, debug=args.debug)
-    
+
     profiler = None
     if args.profile:
         profiler = cProfile.Profile()
@@ -55,56 +63,60 @@ def __main__() -> None:
     previous_frame_bytes = previous_frame.tobytes()
     next_tick = time.time()
     logger.info("Entering main loop.")
-    while True:
-        try:
+    try:
+        while True:
             # TODO: remove this check when webserver is implemented with new config and workflow
             if False:
                 # if server.is_user_connected():
-                Board.matrix.SetImage(CustomFrames.black())
+                display.matrix.SetImage(CustomFrames.black())
             else:
-                if not Board.encoder_queue.empty():
-                    Board.encoder_state += Board.encoder_queue.get()
+                if not state.encoder_queue.empty():
+                    state.encoder_state += state.encoder_queue.get()
 
-                if Board.has_encoder_increased():
-                    Board.encoder_input = EncoderInput.INCREASE_CLOCKWISE
-                    Board.reset_encoder_state()
-                elif Board.has_encoder_decreased():
-                    Board.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
-                    Board.reset_encoder_state()
+                if state.has_encoder_increased():
+                    state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
+                    state.reset_encoder_state()
+                elif state.has_encoder_decreased():
+                    state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
+                    state.reset_encoder_state()
 
                 current_app: Application = AppManager.get_current_app()
                 generated_frame: Image = current_app.generate(
-                    Board.tilt_state, Board.encoder_input
+                    state.tilt_state, state.encoder_input
                 )
-                
-                display_frame = generated_frame if Board.is_display_on else CustomFrames.black()
+
+                display_frame = (
+                    generated_frame if state.is_display_on else CustomFrames.black()
+                )
                 if display_frame.mode != "RGB":
                     display_frame = display_frame.convert("RGB")
-                
+
                 frame_bytes = display_frame.tobytes()
-                
+
                 if frame_bytes != previous_frame_bytes:
                     previous_frame = display_frame
                     previous_frame_bytes = frame_bytes
-                    Board.matrix.SetImage(display_frame)
+                    display.matrix.SetImage(display_frame)
 
-                Board.reset_encoder_input_status()
+                state.reset_encoder_input_status()
 
-            next_tick += Board.refresh_rate
+            next_tick += display.refresh_rate
             sleep_time = next_tick - time.time()
             if sleep_time > 0:
                 time.sleep(sleep_time)
-        except KeyboardInterrupt:
-            logger.info("Program stopped by user.")
-            Board.matrix.SetImage(CustomFrames.black())
+    except KeyboardInterrupt:
+        logger.info("Program stopped by user.")
+        display.matrix.SetImage(CustomFrames.black())
 
-            if profiler:
-                profiler.disable()
-                stats = pstats.Stats(profiler).sort_stats("cumtime")
-                stats.print_stats(20)
-                logger.info("Profiling stats printed.")
+        input_controller.cleanup()
+        display.cleanup()
 
-            break
+        if profiler:
+            profiler.disable()
+            stats = pstats.Stats(profiler).sort_stats("cumtime")
+            stats.print_stats(20)
+            logger.info("Profiling stats printed.")
+        logger.info("Shutdown complete.")
 
 
 if __name__ == "__main__":

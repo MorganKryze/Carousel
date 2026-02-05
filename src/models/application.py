@@ -6,7 +6,7 @@ from loguru import logger
 from PIL import Image
 
 from core.config import Configuration
-from core.custom_frames import CustomFrames
+from display.custom_frames import CustomFrames
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
