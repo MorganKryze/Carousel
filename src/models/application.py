@@ -5,7 +5,7 @@ from typing import Callable, Dict
 from loguru import logger
 from PIL import Image
 
-from core.config import Configuration
+from core.system_context import SystemContext
 from display.custom_frames import CustomFrames
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
@@ -13,33 +13,49 @@ from enums.tilt_input import TiltState
 
 
 class Application:
-    """Modules are components that provide resources or functionnalities that can be used by multiple applications."""
+    """
+    Base application class with singleton SystemContext dependency injection.
+    """
 
-    def __init__(self, callbacks: Dict[str, Callable]):
+    def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
+        """
+        Initialize application with injected singleton context.
+
+        :param context: Singleton SystemContext instance.
+        :param callbacks: Dictionary of callback functions for app interactions.
+        """
+        if not SystemContext.is_initialized():
+            logger.error(f"[{self.__class__.__name__}] SystemContext not initialized!")
+            raise RuntimeError("SystemContext must be initialized before creating apps")
+
+        self.context = context
+        self.callbacks = callbacks
         self.status: ServiceStatus = ServiceStatus.INITIALIZING
+
+        config = context.config
+
         logger.debug(f"[{self.__class__.__name__}] Initializing metadata...")
-        self.enabled = Configuration.get_from_app(
+        self.enabled = config.get_from_app(
             self.__class__.__name__, "enabled", required=True
         )
-        self.name: str = Configuration.get_from_app_meta(
+        self.name: str = config.get_from_app_meta(
             self.__class__.__name__, "name", required=True
         )
-        self.description: str = Configuration.get_from_app_meta(
+        self.description: str = config.get_from_app_meta(
             self.__class__.__name__, "description", required=True
         )
-        self.provides_horizontal_content = Configuration.get_from_app_meta(
+        self.provides_horizontal_content = config.get_from_app_meta(
             self.__class__.__name__, "provides_horizontal_content", required=True
         )
-        self.provides_vertical_content = Configuration.get_from_app_meta(
+        self.provides_vertical_content = config.get_from_app_meta(
             self.__class__.__name__, "provides_vertical_content", required=True
         )
 
         logger.debug(f"[{self.__class__.__name__}] Initializing configuration...")
-        self.callbacks = callbacks
-        self.horizontal_replacement_app_name = Configuration.get_from_app_config(
+        self.horizontal_replacement_app_name = config.get_from_app_config(
             self.__class__.__name__, "horizontal_replacement_app"
         )
-        self.vertical_replacement_app_name = Configuration.get_from_app_config(
+        self.vertical_replacement_app_name = config.get_from_app_config(
             self.__class__.__name__, "vertical_replacement_app"
         )
 

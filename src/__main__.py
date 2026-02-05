@@ -4,7 +4,7 @@ import asyncio
 from loguru import logger
 
 from core.config import Configuration
-from core.game_loop import AsyncGameLoop
+from core.game_loop import GameLoop
 from core.logs import Logs
 from core.path import PathTo
 from display.animations import Animations
@@ -15,9 +15,7 @@ async def async_main(use_emulator: bool = False) -> None:
     Main async entry point.
     Orchestrates initialization, loading animation, and game loop execution.
     """
-    game_loop = AsyncGameLoop(target_fps=10)
-
-    game_loop.initialize_systems(use_emulator=use_emulator)
+    game_loop = GameLoop(target_fps=10, use_emulator=use_emulator)
 
     animations = Animations()
     await animations.loading_animation()
@@ -60,7 +58,9 @@ def main() -> None:
     log_level = "DEBUG" if args.debug else "WARNING"
     Logs.start(file_level="DEBUG", console_level=log_level)
 
-    Configuration.load()
+    # TODO: by default config should load the last working config, but in case of a failure, for the fallback it might be interesting to be able to reload a config from a specific id
+    config = Configuration()
+    config.load()
 
     try:
         asyncio.run(async_main(use_emulator=args.emulator))

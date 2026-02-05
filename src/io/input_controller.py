@@ -15,26 +15,24 @@ from enums.tilt_input import TiltState
 
 class InputController:
     """
-    Singleton class to manage the inputs (Encoder, Buttons, Tilt Switch).
+    Manages GPIO inputs (Encoder, Buttons, Tilt Switch).
+    No longer a singleton - configuration injected via constructor.
     """
-    _instance: Optional["InputController"] = None
 
     FIRST_GPIO_PIN: int = 0
     LAST_GPIO_PIN: int = 27
-    ENCODER_BUTTON_BOUNCE_TIME: float = 0.1
     HOLD_TIME: float = 1.0
     DOUBLE_PRESS_TIME: float = 0.3
     TRIPLE_PRESS_TIME: float = 0.3
     SLEEP_INTERVAL: float = 0.1
 
-    def __new__(cls) -> "InputController":
-        if cls._instance is None:
-            cls._instance = super(InputController, cls).__new__(cls)
-            cls._instance._initialize()
-        return cls._instance
+    def __init__(self, config: Configuration):
+        """
+        Initialize input controller with dependency injection.
 
-    def _initialize(self) -> None:
-        """Initializes the input components."""
+        :param config: Configuration instance for accessing GPIO settings.
+        """
+        self._config = config
         self._state: SystemState = SystemState()
         self.factory: PiGPIOFactory = PiGPIOFactory()
 
@@ -60,7 +58,7 @@ class InputController:
         except Exception as e:
             logger.error(f"Failed to initialize Input components: {e}")
             self._cleanup_gpio()
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"Failed to initialize GPIO components: {e}. "
                 "Please ensure no other processes are using the GPIO pins and try running with sudo."
             )
@@ -91,18 +89,18 @@ class InputController:
     def _validate_gpio_pin(self, pin: int, name: str) -> None:
         """Validates GPIO pin is within valid range."""
         if pin < self.FIRST_GPIO_PIN or pin > self.LAST_GPIO_PIN:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 f"System.{name} must be between {self.FIRST_GPIO_PIN} and {self.LAST_GPIO_PIN}."
             )
 
     def _init_encoder(self) -> None:
         """Initializes the encoder settings."""
-        self.encoder_clk = Configuration.get(
+        self.encoder_clk = self._config.get(
             "System", "Encoder", "gpio_clk", required=True
         )
         self._validate_gpio_pin(self.encoder_clk, "Encoder.gpio_clk")
 
-        self.encoder_dt = Configuration.get(
+        self.encoder_dt = self._config.get(
             "System", "Encoder", "gpio_dt", required=True
         )
         self._validate_gpio_pin(self.encoder_dt, "Encoder.gpio_dt")
@@ -127,7 +125,7 @@ class InputController:
                 ) from e
             raise
 
-        self.encoder_sw = Configuration.get(
+        self.encoder_sw = self._config.get(
             "System", "Encoder", "gpio_sw", required=True
         )
         self._validate_gpio_pin(self.encoder_sw, "Encoder.gpio_sw")
@@ -152,16 +150,16 @@ class InputController:
 
     def _init_tilt_switch(self) -> None:
         """Initializes the tilt switch settings."""
-        self.tilt_switch_pin = Configuration.get(
+        self.tilt_switch_pin = self._config.get(
             "System", "Tilt-switch", "gpio", required=True
         )
         self._validate_gpio_pin(self.tilt_switch_pin, "Tilt-switch.gpio")
 
-        self.tilt_switch_bounce_time = Configuration.get(
+        self.tilt_switch_bounce_time = self._config.get(
             "System", "Tilt-switch", "bounce_time", required=True
         )
         if self.tilt_switch_bounce_time < 0:
-            Configuration.critical_exit(
+            self._config.critical_exit(
                 "System.Tilt-switch.bounce_time must be a non-negative number."
             )
 

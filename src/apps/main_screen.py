@@ -2,19 +2,19 @@ import calendar
 import os
 import time
 from datetime import datetime
+from io.display_controller import DisplayController
 from typing import Callable, Dict
 
 from dateutil import tz
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from io.display_controller import DisplayController
-from core.config import Configuration
+from core.path import PathTo
+from core.system_context import SystemContext
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from core.path import PathTo
 
 light_pink = (255, 219, 218)
 dark_pink = (219, 127, 142)
@@ -37,55 +37,40 @@ FONT_SIZE = 5
 
 
 class MainScreen(Application):
-    def __init__(self, callbacks: Dict[str, Callable]):
-        """
-        Initialize the MainScreen with callbacks.
-
-        :param callbacks: Dict[str, Callable]: Dictionary of callback functions.
-        """
-        super().__init__(callbacks)
+    def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
+        super().__init__(context, callbacks)
         if self.status == ServiceStatus.DISABLED:
             logger.info(
-                f"[{self.__class__.__name__}] Stopped initialization due to disabled status."
+                "Stopped initialization due to disabled status."
             )
             return
 
-        self.use_24_hour = Configuration.get_from_app_config(
+        self.use_24_hour = self.context.config.get_from_app_config(
             self.__class__.__name__, "use_24_hour", required=True
         )
         if self.use_24_hour not in [True, False]:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                "Invalid use_24_hour value. Must be True or False."
-            )
-        self.date_format = Configuration.get_from_app_config(
+            logger.error("Invalid use_24_hour value. Must be True or False.")
+
+        self.date_format = self.context.config.get_from_app_config(
             self.__class__.__name__, "date_format", required=True
         )
-        if self.date_format != "MM-DD" and self.date_format != "DD-MM":
+        if self.date_format not in ["MM-DD", "DD-MM"]:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                "Invalid date format. Possible values are 'MM-DD' or 'DD-MM'."
-            )
-        self.cycle_duration_in_seconds = Configuration.get_from_app_config(
+            logger.error("Invalid date format. Possible values are 'MM-DD' or 'DD-MM'.")
+
+        self.cycle_duration_in_seconds = self.context.config.get_from_app_config(
             self.__class__.__name__, "cycle_duration_in_seconds", required=True
         )
         if self.cycle_duration_in_seconds <= 0:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                "Invalid cycle duration in seconds. Must be greater than 0."
-            )
-        try:
-            self.font = ImageFont.truetype(PathTo.FONT_FILE, FONT_SIZE)
-            logger.info("Font loaded successfully.")
-        except Exception as e:
-            self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(f"Failed to load font: {e}")
+            logger.error("Invalid cycle duration in seconds. Must be greater than 0.")
 
+        self.font = ImageFont.truetype(PathTo.FONT_FILE, FONT_SIZE)
         self.lastGenerateCall = None
         self.is_on_cycle = True
         self.currentIdx = 0
         self.selectMode = False
-        # self.old_noti_list = []
         self.queued_frames = []
 
         try:
@@ -114,12 +99,12 @@ class MainScreen(Application):
 
         if self.status == ServiceStatus.ERROR_APP_CONFIG:
             logger.error(
-                f"[{self.__class__.__name__}] Application configuration errors, please check the configuration before restarting."
+                "Application configuration errors, please check the configuration before restarting."
             )
             return
 
         self.status = ServiceStatus.RUNNING
-        logger.info(f"[{self.__class__.__name__}] Running.")
+        logger.info("App running.")
 
         self.last_sakura_frame = None
         self.last_sakura_time = None
@@ -139,6 +124,7 @@ class MainScreen(Application):
         :return: Image: The generated frame.
         """
         super().generate(tilt_state, encoder_input)
+
         try:
             if encoder_input == EncoderInput.LONG_PRESS:
                 self.selectMode = not self.selectMode
@@ -170,7 +156,13 @@ class MainScreen(Application):
                 frame = frame.copy()
                 draw = ImageDraw.Draw(frame)
                 draw.rectangle(
-                    (0, 0, DisplayController().led_cols - 1, DisplayController().led_rows - 1), outline=white
+                    (
+                        0,
+                        0,
+                        self.context.display.led_cols - 1,
+                        self.context.display.led_rows - 1,
+                    ),
+                    outline=white,
                 )
 
             return frame
@@ -288,7 +280,11 @@ class MainScreen(Application):
         #     self.old_noti_list = noti_list.copy()
 
         if len(self.queued_frames) == 0:
-            frame = Image.new("RGBA", (DisplayController().led_cols, DisplayController().led_rows), washed_out_navy)
+            frame = Image.new(
+                "RGBA",
+                (DisplayController().led_cols, DisplayController().led_rows),
+                washed_out_navy,
+            )
         else:
             frame = self.queued_frames.pop(0)
         draw = ImageDraw.Draw(frame)
@@ -332,7 +328,6 @@ class MainScreen(Application):
                 font=self.font,
             )
             draw.text(
-              
                 (date_x_off + 7, date_y_off), ".", orange_tinted_white, font=self.font
             )
             draw.text(
