@@ -77,6 +77,7 @@ curl -sSL https://raw.githubusercontent.com/MorganKryze/Carousel/main/scripts/in
 - Configures pigpiod service for GPIO control
 - Applies performance optimizations
 - Clones the Carousel repository
+- Setup docker environment
 - **Reboots the system** to apply kernel changes
 
 > **Important**: The system will automatically reboot after installation. Reconnect via SSH after 1-2 minutes.
