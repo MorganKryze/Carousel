@@ -16,15 +16,15 @@ class DisplayController:
     SCREEN_RATIO: int = 16
     VALID_HARDWARE_MAPPINGS: tuple[str, ...] = ("regular", "adafruit-hat")
     
-    def __new__(cls, config: Configuration, use_emulator: bool = False) -> "DisplayController":
+    def __new__(cls, use_emulator: bool = False) -> "DisplayController":
         if cls._instance is None:
             cls._instance = super(DisplayController, cls).__new__(cls)
-            cls._instance._initialize(config=config, use_emulator=use_emulator)
+            cls._instance._initialize(use_emulator=use_emulator)
         return cls._instance
 
-    def _initialize(self, config: Configuration, use_emulator: bool = False) -> None:
+    def _initialize(self, use_emulator: bool = False) -> None:
         """Initializes the display components."""
-        self._config = config
+        self._config: Configuration = Configuration()
         self._state: SystemState = SystemState()
         
         self.led_rows: int = 0
