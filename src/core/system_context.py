@@ -1,5 +1,5 @@
-from io.display_controller import DisplayController
-from io.input_controller import InputController
+from hardware.display_controller import DisplayController
+from hardware.input_controller import InputController
 from typing import Optional
 
 from loguru import logger

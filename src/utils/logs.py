@@ -5,7 +5,7 @@ from datetime import datetime
 from loguru import logger
 
 from core.config import get_version_from_pyproject, get_addresses
-from core.path import PathTo
+from utils.path import PathTo
 
 
 def start_logger(file_level: str = "DEBUG", console_level: str = "WARNING") -> None:

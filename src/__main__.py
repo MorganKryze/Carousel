@@ -5,8 +5,8 @@ from loguru import logger
 
 from core.config import Configuration
 from core.game_loop import GameLoop
-from core.logs import start_logger
-from core.path import PathTo
+from utils.logs import start_logger
+from utils.path import PathTo
 from display.animations import Animations
 
 

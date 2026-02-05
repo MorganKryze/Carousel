@@ -1,6 +1,6 @@
 import asyncio
 import time
-from io.display_controller import DisplayController
+from hardware.display_controller import DisplayController
 
 from loguru import logger
 

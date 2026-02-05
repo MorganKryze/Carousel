@@ -8,7 +8,7 @@ from dateutil import tz
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from core.path import PathTo
+from utils.path import PathTo
 from core.system_context import SystemContext
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus

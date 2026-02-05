@@ -8,7 +8,7 @@ from flask import Flask, jsonify, redirect, render_template, request, url_for
 from loguru import logger
 
 from core.config import Configuration
-from core.path import PathTo
+from utils.path import PathTo
 
 
 class WebServer:

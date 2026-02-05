@@ -9,7 +9,7 @@ from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from core.path import PathTo
+from utils.path import PathTo
 
 WHITE = (230, 255, 255)
 
