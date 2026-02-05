@@ -1,3 +1,5 @@
+import asyncio
+import threading
 import time
 from typing import Optional
 
@@ -45,6 +47,9 @@ class InputController:
         self.encoder: Optional[RotaryEncoder] = None
         self.encoder_button: Optional[Button] = None
         self.tilt_switch_button: Optional[Button] = None
+
+        self._button_press_task: Optional[asyncio.Task] = None
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
 
         self._cleanup_gpio()
 
@@ -189,12 +194,12 @@ class InputController:
 
     def _rotate_clockwise_callback(self, encoder: RotaryEncoder) -> None:
         logger.debug("Rotated clockwise: (+).")
-        self._state.encoder_queue.put(1)
+        self._state.encoder_queue.put_nowait(1)
         encoder.value = 0
 
     def _rotate_counter_clockwise_callback(self, encoder: RotaryEncoder) -> None:
         logger.debug("Rotated counter-clockwise: (-).")
-        self._state.encoder_queue.put(-1)
+        self._state.encoder_queue.put_nowait(-1)
         encoder.value = 0
 
     def _tilt_callback(self, tilt_switch: Button) -> None:
@@ -209,6 +214,61 @@ class InputController:
             )
 
     def _encoder_button_callback(self, enc_button: Button) -> None:
+        """Initiate async button detection when pressed."""
+        if self._button_press_task and not self._button_press_task.done():
+            self._button_press_task.cancel()
+
+        # Schedule task on the correct event loop
+        if self._event_loop and self._event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._detect_button_press_async(enc_button), self._event_loop
+            )
+        else:
+            logger.warning(
+                "AsyncIO event loop not available. Falling back to sync detection."
+            )
+            # Run sync detection in a separate thread to avoid blocking GPIO
+            threading.Thread(
+                target=self._detect_button_press_sync, args=(enc_button,), daemon=True
+            ).start()
+
+    async def _detect_button_press_async(self, enc_button: Button) -> None:
+        """Async button press detection - non-blocking."""
+        try:
+            start_time = time.time()
+
+            while enc_button.is_active and (time.time() - start_time < self.HOLD_TIME):
+                await asyncio.sleep(0.01)
+
+            if time.time() - start_time >= self.HOLD_TIME:
+                logger.debug("Long press detected (5).")
+                self._state.encoder_input = EncoderInput.LONG_PRESS
+            else:
+                start_time = time.time()
+                while time.time() - start_time <= self.DOUBLE_PRESS_TIME:
+                    await asyncio.sleep(0.01)
+                    if enc_button.is_pressed:
+                        await asyncio.sleep(0.01)
+                        triple_start = time.time()
+                        while time.time() - triple_start <= self.TRIPLE_PRESS_TIME:
+                            await asyncio.sleep(0.01)
+                            if enc_button.is_pressed:
+                                logger.debug("Triple press detected (3).")
+                                self._state.encoder_input = EncoderInput.TRIPLE_PRESS
+                                return
+
+                        logger.debug("Double press detected (2).")
+                        self._state.encoder_input = EncoderInput.DOUBLE_PRESS
+                        return
+
+                logger.debug("Single press detected (1).")
+                self._state.encoder_input = EncoderInput.SINGLE_PRESS
+
+        except asyncio.CancelledError:
+            logger.debug("Button press detection cancelled.")
+
+    def _detect_button_press_sync(self, enc_button: Button) -> None:
+        """Fallback sync button press detection."""
         start_time = time.time()
         time_diff = 0
 
@@ -246,9 +306,20 @@ class InputController:
             enc_button.when_pressed = lambda button: self._encoder_button_callback(
                 button
             )
-            return
 
     def cleanup(self) -> None:
         """Public method to cleanup resources on shutdown."""
         logger.info("Cleaning up InputController resources...")
+
+        if self._button_press_task and not self._button_press_task.done():
+            self._button_press_task.cancel()
+
         self._cleanup_gpio()
+
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """
+        Register the asyncio event loop for cross-thread task scheduling.
+        Must be called after asyncio.run() starts but before GPIO callbacks fire.
+        """
+        self._event_loop = loop
+        logger.debug("Event loop registered with InputController.")
