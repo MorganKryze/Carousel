@@ -8,7 +8,6 @@ from PIL import Image
 from core.app_manager import AppManager
 from core.system_context import SystemContext
 from display.custom_frames import CustomFrames
-from enums.encoder_input import EncoderInput
 from models.application import Application
 
 
@@ -73,14 +72,16 @@ class GameLoop:
         """Process a single frame: handle inputs, generate image, update display."""
         state = self.context.state
 
+        # Accumulate all encoder changes from this frame
         total_encoder_change = 0
         while not state.encoder_queue.empty():
             total_encoder_change += state.encoder_queue.get_nowait()
 
+        # Apply accumulated change only once per frame
         if total_encoder_change > 0:
-            state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
+            self.app_manager.switch_next_app()
         elif total_encoder_change < 0:
-            state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
+            self.app_manager.switch_prev_app()
 
         current_app: Application = self.app_manager.get_current_app()
         generated_frame: Image = current_app.generate(
