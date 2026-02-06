@@ -8,6 +8,7 @@ from PIL import Image
 from core.app_manager import AppManager
 from core.system_context import SystemContext
 from display.custom_frames import CustomFrames
+from enums.encoder_input import EncoderInput
 from models.application import Application
 
 
@@ -21,7 +22,6 @@ class GameLoop:
         self.time_per_frame = 1.0 / target_fps
         self.last_frame_time = time.time()
         self.running = True
-        self.last_processed_encoder_value = 0
 
         # Initialize singletons in correct order
         self.context = SystemContext(use_emulator=use_emulator)
@@ -73,17 +73,23 @@ class GameLoop:
         """Process a single frame: handle inputs, generate image, update display."""
         state = self.context.state
 
-        total_encoder_change = 0
+        # Process all encoder changes from the queue for this frame
+        encoder_change_this_frame = 0
         while not state.encoder_queue.empty():
-            total_encoder_change += state.encoder_queue.get_nowait()
+            encoder_change_this_frame += state.encoder_queue.get_nowait()
 
-        if total_encoder_change != self.last_processed_encoder_value:
-            if total_encoder_change > self.last_processed_encoder_value:
-                self.app_manager.switch_next_app()
-            elif total_encoder_change < self.last_processed_encoder_value:
-                self.app_manager.switch_prev_app()
-            self.last_processed_encoder_value = total_encoder_change
+        # Store encoder rotation in state so apps can access it
+        state.encoder_rotation_this_frame = encoder_change_this_frame
 
+        # Convert encoder rotation to EncoderInput enum for apps to handle
+        # Only set if no button press was registered (button press takes priority)
+        if state.encoder_input == EncoderInput.NOTHING:
+            if encoder_change_this_frame > 0:
+                state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
+            elif encoder_change_this_frame < 0:
+                state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
+
+        # Get current app and let it generate frame
         current_app: Application = self.app_manager.get_current_app()
         generated_frame: Image = current_app.generate(
             state.tilt_state, state.encoder_input
@@ -101,6 +107,7 @@ class GameLoop:
             self.context.display.matrix.SetImage(display_frame)
 
         state.reset_encoder_input_status()
+        state.encoder_rotation_this_frame = 0
 
     def cleanup(self) -> None:
         """Release all hardware resources."""
@@ -113,5 +120,9 @@ class GameLoop:
 
             if self.context.input_controller:
                 self.context.input_controller.cleanup()
+
+            if self.context.state:
+                self.context.state.encoder_rotation_this_frame = 0
+                self.context.state.encoder_queue.queue.clear()
 
         logger.info("Cleanup complete.")

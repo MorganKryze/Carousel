@@ -1,11 +1,11 @@
-from hardware.display_controller import DisplayController
-from hardware.input_controller import InputController
 from typing import Optional
 
 from loguru import logger
 
 from core.config import Configuration
 from core.system_state import SystemState
+from hardware.display_controller import DisplayController
+from hardware.input_controller import GPIOInputController, KeyboardInputController
 
 
 class SystemContext:
@@ -36,8 +36,20 @@ class SystemContext:
 
         self.config = Configuration()
         self.state = SystemState()
+
+        logger.info("Initializing hardware components...")
         self.display = DisplayController(use_emulator=use_emulator)
-        self.input_controller = InputController(self.config)
+
+        if use_emulator:
+            self.input_controller = KeyboardInputController()
+        else:
+            self.input_controller = GPIOInputController(self.config)
+
+        self.input_controller.set_callbacks(
+            on_tilt_change=self.state.update_tilt_state,
+            on_encoder_change=self.state.update_encoder_value,
+            on_encoder_button=self.state.update_encoder_input_status,
+        )
 
         SystemContext._initialized = True
         logger.info("SystemContext initialized successfully.")

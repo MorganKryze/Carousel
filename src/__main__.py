@@ -5,9 +5,9 @@ from loguru import logger
 
 from core.config import Configuration
 from core.game_loop import GameLoop
+from display.animations import Animations
 from utils.logs import start_logger
 from utils.path import PathTo
-from display.animations import Animations
 
 
 async def async_main(use_emulator: bool = False) -> None:
@@ -18,6 +18,13 @@ async def async_main(use_emulator: bool = False) -> None:
     game_loop = GameLoop(target_fps=10, use_emulator=use_emulator)
 
     animations = Animations()
+
+    if use_emulator:
+        logger.warning(
+            "EMULATOR MODE: About to start display rendering. "
+            "You will see 'RuntimeError: This event loop is already running' - this is expected and can be safely ignored."
+        )
+
     await animations.loading_animation()
 
     render_task = asyncio.create_task(game_loop.render_loop())

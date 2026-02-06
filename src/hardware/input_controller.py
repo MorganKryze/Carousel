@@ -1,323 +1,297 @@
 import asyncio
-import threading
 import time
+from abc import ABC, abstractmethod
 from typing import Optional
 
-from gpiozero import Button, RotaryEncoder
-from gpiozero.pins.pigpio import PiGPIOFactory
 from loguru import logger
 
-from core.config import Configuration
-from core.system_state import SystemState
 from enums.encoder_input import EncoderInput
 from enums.tilt_input import TiltState
 
 
-class InputController:
-    """
-    Manages GPIO inputs (Encoder, Buttons, Tilt Switch).
-    No longer a singleton - configuration injected via constructor.
-    """
+class InputController(ABC):
+    """Abstract base class for input handling."""
 
-    FIRST_GPIO_PIN: int = 0
-    LAST_GPIO_PIN: int = 27
-    HOLD_TIME: float = 1.0
-    DOUBLE_PRESS_TIME: float = 0.3
-    TRIPLE_PRESS_TIME: float = 0.3
-    SLEEP_INTERVAL: float = 0.1
+    def __init__(self):
+        self.event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self.on_tilt_change_callback = None
+        self.on_encoder_change_callback = None
+        self.on_encoder_button_callback = None
 
-    def __init__(self, config: Configuration):
-        """
-        Initialize input controller with dependency injection.
+    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Set the event loop for async callbacks."""
+        self.event_loop = loop
 
-        :param config: Configuration instance for accessing GPIO settings.
-        """
-        self._config = config
-        self._state: SystemState = SystemState()
-        self.factory: PiGPIOFactory = PiGPIOFactory()
+    def set_callbacks(
+        self,
+        on_tilt_change,
+        on_encoder_change,
+        on_encoder_button,
+    ) -> None:
+        """Set callback functions for input events."""
+        self.on_tilt_change_callback = on_tilt_change
+        self.on_encoder_change_callback = on_encoder_change
+        self.on_encoder_button_callback = on_encoder_button
 
-        self.encoder_clk: int = 0
-        self.encoder_dt: int = 0
-        self.encoder_sw: int = 0
-        self.tilt_switch_pin: int = 0
-        self.tilt_switch_bounce_time: float = 0.0
+    @abstractmethod
+    def cleanup(self) -> None:
+        """Cleanup resources."""
+        pass
 
-        self.encoder: Optional[RotaryEncoder] = None
-        self.encoder_button: Optional[Button] = None
-        self.tilt_switch_button: Optional[Button] = None
 
-        self._button_press_task: Optional[asyncio.Task] = None
-        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+class GPIOInputController(InputController):
+    """GPIO-based input controller for Raspberry Pi."""
 
-        self._cleanup_gpio()
-
-        try:
-            self._init_encoder()
-            self._init_tilt_switch()
-            logger.debug("Input systems initialized.")
-        except Exception as e:
-            logger.error(f"Failed to initialize Input components: {e}")
-            self._cleanup_gpio()
-            self._config.critical_exit(
-                f"Failed to initialize GPIO components: {e}. "
-                "Please ensure no other processes are using the GPIO pins and try running with sudo."
-            )
-
-    def _cleanup_gpio(self) -> None:
-        """Cleanup GPIO resources to prevent conflicts."""
-        try:
-            if hasattr(self, "encoder") and self.encoder:
-                self.encoder.close()
-                logger.debug("Encoder cleaned up.")
-        except Exception as e:
-            logger.warning(f"Error cleaning up encoder: {e}")
+    def __init__(self, config):
+        super().__init__()
+        logger.info("Initializing GPIO input controller...")
 
         try:
-            if hasattr(self, "encoder_button") and self.encoder_button:
-                self.encoder_button.close()
-                logger.debug("Encoder button cleaned up.")
-        except Exception as e:
-            logger.warning(f"Error cleaning up encoder button: {e}")
+            import pigpio  # type: ignore
+            from gpiozero import Button
+        except ImportError:
+            logger.error("GPIO libraries not available. Install pigpio and gpiozero.")
+            raise
 
-        try:
-            if hasattr(self, "tilt_switch_button") and self.tilt_switch_button:
-                self.tilt_switch_button.close()
-                logger.debug("Tilt switch button cleaned up.")
-        except Exception as e:
-            logger.warning(f"Error cleaning up tilt switch button: {e}")
+        # Tilt switch setup
+        self.tilt_gpio = config.get("System", "Tilt-switch", "gpio", required=True)
+        bounce_time = config.get(
+            "System", "Tilt-switch", "bounce_time", default=0.25, required=True
+        )
+        self.tilt_switch = Button(self.tilt_gpio, bounce_time=bounce_time)
+        self.tilt_switch.when_pressed = self._on_tilt_change
+        self.tilt_switch.when_released = self._on_tilt_change
 
-    def _validate_gpio_pin(self, pin: int, name: str) -> None:
-        """Validates GPIO pin is within valid range."""
-        if pin < self.FIRST_GPIO_PIN or pin > self.LAST_GPIO_PIN:
-            self._config.critical_exit(
-                f"System.{name} must be between {self.FIRST_GPIO_PIN} and {self.LAST_GPIO_PIN}."
-            )
-
-    def _init_encoder(self) -> None:
-        """Initializes the encoder settings."""
-        self.encoder_clk = self._config.get(
+        # Encoder setup
+        self.encoder_gpio_clk = config.get(
             "System", "Encoder", "gpio_clk", required=True
         )
-        self._validate_gpio_pin(self.encoder_clk, "Encoder.gpio_clk")
+        self.encoder_gpio_dt = config.get("System", "Encoder", "gpio_dt", required=True)
+        self.encoder_gpio_sw = config.get("System", "Encoder", "gpio_sw", required=True)
 
-        self.encoder_dt = self._config.get(
-            "System", "Encoder", "gpio_dt", required=True
+        self.pi = pigpio.pi()
+        if not self.pi.connected:
+            raise RuntimeError("Failed to connect to pigpio daemon")
+
+        self.encoder_button = Button(self.encoder_gpio_sw)
+        self.encoder_button.when_pressed = self._on_encoder_button_press
+
+        self.pi.set_mode(self.encoder_gpio_clk, pigpio.INPUT)
+        self.pi.set_mode(self.encoder_gpio_dt, pigpio.INPUT)
+        self.pi.set_pull_up_down(self.encoder_gpio_clk, pigpio.PUD_UP)
+        self.pi.set_pull_up_down(self.encoder_gpio_dt, pigpio.PUD_UP)
+
+        self.encoder_callback = self.pi.callback(
+            self.encoder_gpio_clk, pigpio.EITHER_EDGE, self._encoder_pulse
         )
-        self._validate_gpio_pin(self.encoder_dt, "Encoder.gpio_dt")
 
-        try:
-            self.encoder = RotaryEncoder(
-                self.encoder_clk,
-                self.encoder_dt,
-                pin_factory=self.factory,
-            )
-            self.encoder.when_rotated_clockwise = (
-                lambda enc: self._rotate_clockwise_callback(enc)
-            )
-            self.encoder.when_rotated_counter_clockwise = (
-                lambda enc: self._rotate_counter_clockwise_callback(enc)
-            )
-            logger.info("Encoder rotation initialized.")
-        except RuntimeError as e:
-            if "Failed to add edge detection" in str(e):
-                raise RuntimeError(
-                    f"GPIO pins {self.encoder_clk} or {self.encoder_dt} are already in use or unavailable."
-                ) from e
-            raise
+        logger.info("GPIO input controller initialized successfully.")
 
-        self.encoder_sw = self._config.get(
-            "System", "Encoder", "gpio_sw", required=True
-        )
-        self._validate_gpio_pin(self.encoder_sw, "Encoder.gpio_sw")
-
-        try:
-            self.encoder_button = Button(
-                self.encoder_sw,
-                pull_up=True,
-                bounce_time=0.1,
-                pin_factory=self.factory,
-            )
-            self.encoder_button.when_pressed = (
-                lambda button: self._encoder_button_callback(button)
-            )
-            logger.info("Encoder button initialized.")
-        except RuntimeError as e:
-            if "Failed to add edge detection" in str(e):
-                raise RuntimeError(
-                    f"GPIO pin {self.encoder_sw} is already in use or unavailable."
-                ) from e
-            raise
-
-    def _init_tilt_switch(self) -> None:
-        """Initializes the tilt switch settings."""
-        self.tilt_switch_pin = self._config.get(
-            "System", "Tilt-switch", "gpio", required=True
-        )
-        self._validate_gpio_pin(self.tilt_switch_pin, "Tilt-switch.gpio")
-
-        self.tilt_switch_bounce_time = self._config.get(
-            "System", "Tilt-switch", "bounce_time", required=True
-        )
-        if self.tilt_switch_bounce_time < 0:
-            self._config.critical_exit(
-                "System.Tilt-switch.bounce_time must be a non-negative number."
-            )
-
-        try:
-            self.tilt_switch_button = Button(
-                self.tilt_switch_pin,
-                pull_up=True,
-                bounce_time=self.tilt_switch_bounce_time,
-                pin_factory=self.factory,
-            )
-            self._state.tilt_state = (
+    def _on_tilt_change(self) -> None:
+        """Handle tilt switch state change."""
+        if self.on_tilt_change_callback and self.event_loop:
+            new_state = (
                 TiltState.HORIZONTAL
-                if self.tilt_switch_button.is_pressed
+                if self.tilt_switch.is_pressed
                 else TiltState.VERTICAL
             )
-
-            self.tilt_switch_button.when_pressed = lambda button: self._tilt_callback(
-                button
-            )
-            self.tilt_switch_button.when_released = lambda button: self._tilt_callback(
-                button
-            )
-            logger.debug("Tilt switch button initialized.")
-        except RuntimeError as e:
-            if "Failed to add edge detection" in str(e):
-                raise RuntimeError(
-                    f"GPIO pin {self.tilt_switch_pin} is already in use or unavailable."
-                ) from e
-            raise
-
-    def _rotate_clockwise_callback(self, encoder: RotaryEncoder) -> None:
-        logger.debug("Rotated clockwise: (+).")
-        self._state.encoder_queue.put_nowait(1)
-        encoder.value = 0
-
-    def _rotate_counter_clockwise_callback(self, encoder: RotaryEncoder) -> None:
-        logger.debug("Rotated counter-clockwise: (-).")
-        self._state.encoder_queue.put_nowait(-1)
-        encoder.value = 0
-
-    def _tilt_callback(self, tilt_switch: Button) -> None:
-        current_tilt_state = (
-            TiltState.HORIZONTAL if tilt_switch.is_pressed else TiltState.VERTICAL
-        )
-
-        if current_tilt_state != self._state.tilt_state:
-            self._state.tilt_state = current_tilt_state
-            logger.debug(
-                f"Orientation changed to {self._state.tilt_state.name.lower()}."
-            )
-
-    def _encoder_button_callback(self, enc_button: Button) -> None:
-        """Initiate async button detection when pressed."""
-        if self._button_press_task and not self._button_press_task.done():
-            self._button_press_task.cancel()
-
-        # Schedule task on the correct event loop
-        if self._event_loop and self._event_loop.is_running():
             asyncio.run_coroutine_threadsafe(
-                self._detect_button_press_async(enc_button), self._event_loop
+                self.on_tilt_change_callback(new_state), self.event_loop
             )
-        else:
-            logger.warning(
-                "AsyncIO event loop not available. Falling back to sync detection."
+
+    def _encoder_pulse(self, gpio, level, tick) -> None:
+        """Handle encoder rotation."""
+        if self.on_encoder_change_callback and self.event_loop:
+            dt_state = self.pi.read(self.encoder_gpio_dt)
+            direction = 1 if dt_state == 0 else -1
+            asyncio.run_coroutine_threadsafe(
+                self.on_encoder_change_callback(direction), self.event_loop
             )
-            # Run sync detection in a separate thread to avoid blocking GPIO
-            threading.Thread(
-                target=self._detect_button_press_sync, args=(enc_button,), daemon=True
-            ).start()
 
-    async def _detect_button_press_async(self, enc_button: Button) -> None:
-        """Async button press detection - non-blocking."""
-        try:
-            start_time = time.time()
-
-            while enc_button.is_active and (time.time() - start_time < self.HOLD_TIME):
-                await asyncio.sleep(0.01)
-
-            if time.time() - start_time >= self.HOLD_TIME:
-                logger.debug("Long press detected (5).")
-                self._state.encoder_input = EncoderInput.LONG_PRESS
-            else:
-                start_time = time.time()
-                while time.time() - start_time <= self.DOUBLE_PRESS_TIME:
-                    await asyncio.sleep(0.01)
-                    if enc_button.is_pressed:
-                        await asyncio.sleep(0.01)
-                        triple_start = time.time()
-                        while time.time() - triple_start <= self.TRIPLE_PRESS_TIME:
-                            await asyncio.sleep(0.01)
-                            if enc_button.is_pressed:
-                                logger.debug("Triple press detected (3).")
-                                self._state.encoder_input = EncoderInput.TRIPLE_PRESS
-                                return
-
-                        logger.debug("Double press detected (2).")
-                        self._state.encoder_input = EncoderInput.DOUBLE_PRESS
-                        return
-
-                logger.debug("Single press detected (1).")
-                self._state.encoder_input = EncoderInput.SINGLE_PRESS
-
-        except asyncio.CancelledError:
-            logger.debug("Button press detection cancelled.")
-
-    def _detect_button_press_sync(self, enc_button: Button) -> None:
-        """Fallback sync button press detection."""
-        start_time = time.time()
-        time_diff = 0
-
-        while enc_button.is_active and (time_diff < self.HOLD_TIME):
-            time_diff = time.time() - start_time
-
-        if time_diff >= self.HOLD_TIME:
-            logger.debug("Long press detected (5).")
-            self._state.encoder_input = EncoderInput.LONG_PRESS
-        else:
-            enc_button.when_pressed = None
-            start_time = time.time()
-            while time.time() - start_time <= self.DOUBLE_PRESS_TIME:
-                time.sleep(self.SLEEP_INTERVAL)
-                if enc_button.is_pressed:
-                    time.sleep(self.SLEEP_INTERVAL)
-                    new_start_time = time.time()
-                    while time.time() - new_start_time <= self.TRIPLE_PRESS_TIME:
-                        time.sleep(self.SLEEP_INTERVAL)
-                        if enc_button.is_pressed:
-                            logger.debug("Triple press detected (3).")
-                            self._state.encoder_input = EncoderInput.TRIPLE_PRESS
-                            enc_button.when_pressed = (
-                                lambda button: self._encoder_button_callback(button)
-                            )
-                            return
-                        logger.debug("Double press detected (2).")
-                        self._state.encoder_input = EncoderInput.DOUBLE_PRESS
-                        enc_button.when_pressed = (
-                            lambda button: self._encoder_button_callback(button)
-                        )
-                        return
-            logger.debug("Single press detected (1).")
-            self._state.encoder_input = EncoderInput.SINGLE_PRESS
-            enc_button.when_pressed = lambda button: self._encoder_button_callback(
-                button
+    def _on_encoder_button_press(self) -> None:
+        """Handle encoder button press."""
+        if self.on_encoder_button_callback and self.event_loop:
+            asyncio.run_coroutine_threadsafe(
+                self.on_encoder_button_callback(EncoderInput.SINGLE_PRESS),
+                self.event_loop,
             )
 
     def cleanup(self) -> None:
-        """Public method to cleanup resources on shutdown."""
-        logger.info("Cleaning up InputController resources...")
+        """Cleanup GPIO resources."""
+        logger.info("Cleaning up GPIO input controller...")
+        if hasattr(self, "encoder_callback"):
+            self.encoder_callback.cancel()
+        if hasattr(self, "pi"):
+            self.pi.stop()
+        if hasattr(self, "tilt_switch"):
+            self.tilt_switch.close()
+        if hasattr(self, "encoder_button"):
+            self.encoder_button.close()
 
-        if self._button_press_task and not self._button_press_task.done():
-            self._button_press_task.cancel()
 
-        self._cleanup_gpio()
+class KeyboardInputController(InputController):
+    """Keyboard-based input controller for desktop development."""
 
-    def set_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
-        """
-        Register the asyncio event loop for cross-thread task scheduling.
-        Must be called after asyncio.run() starts but before GPIO callbacks fire.
-        """
-        self._event_loop = loop
-        logger.debug("Event loop registered with InputController.")
+    # Press detection timing constants (in seconds)
+    LONG_PRESS_THRESHOLD = 0.5  # Hold for 0.5s = long press
+    DOUBLE_PRESS_WINDOW = 0.3  # Second press within 0.3s = double press
+
+    def __init__(self):
+        super().__init__()
+        logger.info("Initializing keyboard input controller...")
+
+        try:
+            from pynput import keyboard  # type: ignore
+        except ImportError:
+            logger.error("pynput not installed. Install with: pip install pynput")
+            raise
+
+        self.current_tilt = TiltState.HORIZONTAL
+
+        # Button press detection state
+        self.button_press_start_time: Optional[float] = None
+        self.button_press_count = 0
+        self.last_press_time: Optional[float] = None
+        self.pending_press_task: Optional[asyncio.Task] = None
+
+        self.listener = keyboard.Listener(
+            on_press=self._on_key_press,
+            on_release=self._on_key_release,
+        )
+        self.listener.start()
+        logger.info("Keyboard input controller initialized. Controls:")
+        logger.info("  Space: Toggle tilt (horizontal/vertical)")
+        logger.info("  Left Arrow: Rotate encoder CCW")
+        logger.info("  Right Arrow: Rotate encoder CW")
+        logger.info("  Down Arrow: Single press (quick tap)")
+        logger.info("  Down Arrow x2: Double press (two quick taps)")
+        logger.info("  Down Arrow (hold): Long press (hold for 0.5s)")
+
+    def _on_key_press(self, key) -> None:
+        """Handle key press events."""
+        try:
+            from pynput import keyboard  # type: ignore
+
+            if key == keyboard.Key.space:
+                # Toggle tilt
+                new_state = (
+                    TiltState.VERTICAL
+                    if self.current_tilt == TiltState.HORIZONTAL
+                    else TiltState.HORIZONTAL
+                )
+                self.current_tilt = new_state
+                if self.on_tilt_change_callback and self.event_loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self.on_tilt_change_callback(new_state), self.event_loop
+                    )
+
+            elif key == keyboard.Key.left:
+                # Encoder rotate counter-clockwise
+                if self.on_encoder_change_callback and self.event_loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self.on_encoder_change_callback(-1), self.event_loop
+                    )
+                    logger.debug("Encoder: CCW")
+
+            elif key == keyboard.Key.right:
+                # Encoder rotate clockwise
+                if self.on_encoder_change_callback and self.event_loop:
+                    asyncio.run_coroutine_threadsafe(
+                        self.on_encoder_change_callback(1), self.event_loop
+                    )
+                    logger.debug("Encoder: CW")
+
+            elif key == keyboard.Key.down:
+                # Start tracking button press
+                if self.button_press_start_time is None:
+                    self.button_press_start_time = time.time()
+
+        except Exception as e:
+            logger.error(f"Error handling key press: {e}", exc_info=True)
+
+    def _on_key_release(self, key) -> None:
+        """Handle key release events for button press detection."""
+        try:
+            from pynput import keyboard  # type: ignore
+
+            if key == keyboard.Key.down and self.button_press_start_time is not None:
+                press_duration = time.time() - self.button_press_start_time
+                self.button_press_start_time = None
+
+                # Check if it's a long press
+                if press_duration >= self.LONG_PRESS_THRESHOLD:
+                    self._trigger_press(EncoderInput.LONG_PRESS)
+                else:
+                    # It's a quick press - check for double/triple press
+                    self._handle_quick_press()
+
+        except Exception as e:
+            logger.error(f"Error handling key release: {e}", exc_info=True)
+
+    def _handle_quick_press(self) -> None:
+        """Handle quick button presses (single/double/triple)."""
+        current_time = time.time()
+
+        # Check if this is part of a multi-press sequence
+        if (
+            self.last_press_time
+            and (current_time - self.last_press_time) < self.DOUBLE_PRESS_WINDOW
+        ):
+            self.button_press_count += 1
+
+            # Cancel pending single press if it exists
+            if self.pending_press_task and not self.pending_press_task.done():
+                self.pending_press_task.cancel()
+        else:
+            # New press sequence
+            self.button_press_count = 1
+
+        self.last_press_time = current_time
+
+        # Schedule press detection after the double-press window
+        if self.event_loop:
+            self.pending_press_task = asyncio.run_coroutine_threadsafe(
+                self._finalize_press_detection(), self.event_loop
+            )
+
+    async def _finalize_press_detection(self) -> None:
+        """Wait for double-press window to expire, then trigger the appropriate press."""
+        try:
+            await asyncio.sleep(self.DOUBLE_PRESS_WINDOW)
+
+            # Determine press type based on count
+            if self.button_press_count == 1:
+                self._trigger_press(EncoderInput.SINGLE_PRESS)
+            elif self.button_press_count == 2:
+                self._trigger_press(EncoderInput.DOUBLE_PRESS)
+            elif self.button_press_count >= 3:
+                self._trigger_press(EncoderInput.TRIPLE_PRESS)
+
+            # Reset state
+            self.button_press_count = 0
+
+        except asyncio.CancelledError:
+            # Task was cancelled (another press came in)
+            pass
+        except Exception as e:
+            logger.error(f"Error in press detection: {e}", exc_info=True)
+
+    def _trigger_press(self, press_type: EncoderInput) -> None:
+        """Trigger the encoder button callback with the detected press type."""
+        if self.on_encoder_button_callback and self.event_loop:
+            asyncio.run_coroutine_threadsafe(
+                self.on_encoder_button_callback(press_type),
+                self.event_loop,
+            )
+            logger.debug(f"Encoder: {press_type.name}")
+
+    def cleanup(self) -> None:
+        """Cleanup keyboard listener."""
+        logger.info("Cleaning up keyboard input controller...")
+
+        # Cancel pending press detection task
+        if self.pending_press_task and not self.pending_press_task.done():
+            self.pending_press_task.cancel()
+
+        if hasattr(self, "listener"):
+            self.listener.stop()
