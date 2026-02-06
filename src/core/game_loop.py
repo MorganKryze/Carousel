@@ -17,13 +17,12 @@ class GameLoop:
     Main game loop coordinating singleton components.
     """
 
-    def __init__(self, target_fps: int = 10, use_emulator: bool = False):
+    def __init__(self, target_fps: int = 24, use_emulator: bool = False):
         self.target_fps = target_fps
         self.time_per_frame = 1.0 / target_fps
         self.last_frame_time = time.time()
         self.running = True
 
-        # Initialize singletons in correct order
         self.context = SystemContext(use_emulator=use_emulator)
         
         event_loop = asyncio.get_running_loop()
@@ -73,23 +72,18 @@ class GameLoop:
         """Process a single frame: handle inputs, generate image, update display."""
         state = self.context.state
 
-        # Process all encoder changes from the queue for this frame
         encoder_change_this_frame = 0
         while not state.encoder_queue.empty():
             encoder_change_this_frame += state.encoder_queue.get_nowait()
 
-        # Store encoder rotation in state so apps can access it
         state.encoder_rotation_this_frame = encoder_change_this_frame
 
-        # Convert encoder rotation to EncoderInput enum for apps to handle
-        # Only set if no button press was registered (button press takes priority)
         if state.encoder_input == EncoderInput.NOTHING:
             if encoder_change_this_frame > 0:
                 state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
             elif encoder_change_this_frame < 0:
                 state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
 
-        # Get current app and let it generate frame
         current_app: Application = self.app_manager.get_current_app()
         generated_frame: Image = current_app.generate(
             state.tilt_state, state.encoder_input
