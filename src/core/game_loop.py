@@ -73,15 +73,14 @@ class GameLoop:
         """Process a single frame: handle inputs, generate image, update display."""
         state = self.context.state
 
+        total_encoder_change = 0
         while not state.encoder_queue.empty():
-            state.encoder_state += state.encoder_queue.get_nowait()
+            total_encoder_change += state.encoder_queue.get_nowait()
 
-        if state.has_encoder_increased():
+        if total_encoder_change > 0:
             state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
-            state.reset_encoder_state()
-        elif state.has_encoder_decreased():
+        elif total_encoder_change < 0:
             state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
-            state.reset_encoder_state()
 
         current_app: Application = self.app_manager.get_current_app()
         generated_frame: Image = current_app.generate(
