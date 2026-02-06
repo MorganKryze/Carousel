@@ -93,10 +93,7 @@ class AppManager:
     def _filter_apps_for_carousel(self) -> List[Application]:
         """Filter enabled applications for carousel display."""
         return [
-            app
-            for app in self.enabled_apps
-            if app.provides_horizontal_content is True
-            or app.horizontal_replacement_app_name is not None
+            app for app in self.enabled_apps if app.provides_horizontal_content is True
         ]
 
     def get_app_by_name(self, app_name: str) -> Optional[Application]:

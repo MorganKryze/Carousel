@@ -124,3 +124,27 @@ class CustomFrames:
         )
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
         return frame
+
+    @classmethod
+    def turn_frame(cls, app_name: str, missing_orientation: str) -> Image:
+        """
+        Generate a frame telling the user to turn the carousel for missing content.
+        """
+        frame = cls.black()
+        draw = ImageDraw.Draw(frame)
+
+        title = f"{app_name}"
+        message = f"No {missing_orientation} content. Turn carousel."
+
+        draw.text((2, 2), title, fill=RED, font=cls.font)
+
+        bbox = draw.textbbox((0, 0), message, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        x = max(0, (cls.led_cols - text_width) // 2)
+        y = max(0, (cls.led_rows - text_height) // 2)
+
+        draw.text((x, y), message, fill=RED, font=cls.font)
+        draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
+        return frame

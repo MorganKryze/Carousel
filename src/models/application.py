@@ -52,12 +52,7 @@ class Application:
         )
 
         logger.debug(f"[{self.__class__.__name__}] Initializing configuration...")
-        self.horizontal_replacement_app_name = config.get_from_app_config(
-            self.__class__.__name__, "horizontal_replacement_app"
-        )
-        self.vertical_replacement_app_name = config.get_from_app_config(
-            self.__class__.__name__, "vertical_replacement_app"
-        )
+        # (remove replacement app config reads)
 
         if not self.enabled:
             self.status = ServiceStatus.DISABLED
@@ -75,22 +70,10 @@ class Application:
             return self.generate_on_error()
 
         if tilt_state is TiltState.HORIZONTAL and not self.provides_horizontal_content:
-            replacement_app: Application = self.callbacks["get_app_by_name"](
-                self.horizontal_replacement_app_name
-            )
-            if replacement_app:
-                return replacement_app.generate(tilt_state, encoder_input)
-            else:
-                return CustomFrames.black()
+            return CustomFrames.turn_frame(self.name, "horizontal")
 
         if tilt_state is TiltState.VERTICAL and not self.provides_vertical_content:
-            replacement_app: Application = self.callbacks["get_app_by_name"](
-                self.vertical_replacement_app_name
-            )
-            if replacement_app:
-                return replacement_app.generate(tilt_state, encoder_input)
-            else:
-                return CustomFrames.black()
+            return CustomFrames.turn_frame(self.name, "vertical")
 
     def generate_on_error(self) -> Image:
         """
