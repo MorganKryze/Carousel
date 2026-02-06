@@ -4,6 +4,7 @@ from typing import Optional
 
 from loguru import logger
 
+from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.tilt_input import TiltState
 from models.input_controller import InputController
@@ -12,15 +13,20 @@ from models.input_controller import InputController
 class GPIOInputController(InputController):
     """GPIO-based input controller for Raspberry Pi."""
 
-    # Press detection timing constants (in seconds)
-    LONG_PRESS_THRESHOLD = 0.5
-    DOUBLE_PRESS_WINDOW = 0.3
-    
     # GPIO pin range validation
     FIRST_GPIO_PIN = 0
     LAST_GPIO_PIN = 27
 
-    def __init__(self, config):
+    # Button press detection thresholds
+    SINGLE_PRESS_COUNT = 1
+    DOUBLE_PRESS_COUNT = 2
+    TRIPLE_PRESS_COUNT = 3
+    MIN_TRIPLE_PRESS_COUNT = 3
+
+    # Encoder value reset
+    ENCODER_VALUE_RESET = 0
+
+    def __init__(self, config: Configuration):
         super().__init__()
         logger.info("Initializing GPIO input controller...")
 
@@ -40,18 +46,20 @@ class GPIOInputController(InputController):
 
         self.tilt_gpio = config.get("System", "Tilt-switch", "gpio", required=True)
         self._validate_gpio_pin(self.tilt_gpio, "Tilt-switch.gpio")
-        
-        bounce_time = config.get(
-            "System", "Tilt-switch", "bounce_time", default=0.25, required=True
+
+        tilt_bounce_time = config.get(
+            "System", "Tilt-switch", "bounce_time", required=True
         )
-        if bounce_time < 0:
-            logger.error(f"Invalid bounce_time: {bounce_time}. Must be non-negative.")
+        if tilt_bounce_time < 0:
+            logger.error(
+                f"Invalid bounce_time: {tilt_bounce_time}. Must be non-negative."
+            )
             raise ValueError("Tilt-switch bounce_time must be non-negative")
-            
+
         self.tilt_switch = Button(
             self.tilt_gpio,
             pull_up=True,
-            bounce_time=bounce_time,
+            bounce_time=tilt_bounce_time,
             pin_factory=self.factory,
         )
         self.tilt_switch.when_pressed = self._on_tilt_change
@@ -59,12 +67,39 @@ class GPIOInputController(InputController):
 
         encoder_gpio_clk = config.get("System", "Encoder", "gpio_clk", required=True)
         self._validate_gpio_pin(encoder_gpio_clk, "Encoder.gpio_clk")
-        
+
         encoder_gpio_dt = config.get("System", "Encoder", "gpio_dt", required=True)
         self._validate_gpio_pin(encoder_gpio_dt, "Encoder.gpio_dt")
-        
+
         encoder_gpio_sw = config.get("System", "Encoder", "gpio_sw", required=True)
         self._validate_gpio_pin(encoder_gpio_sw, "Encoder.gpio_sw")
+
+        encoder_bounce_time = config.get(
+            "System", "Encoder", "bounce_time", required=True
+        )
+        if encoder_bounce_time < 0:
+            logger.error(
+                f"Invalid bounce_time: {encoder_bounce_time}. Must be non-negative."
+            )
+            raise ValueError("Encoder bounce_time must be non-negative")
+
+        encoder_double_press_window = config.get(
+            "System", "Encoder", "double_press_window", required=True
+        )
+        if encoder_double_press_window < 0:
+            logger.error(
+                f"Invalid double_press_window: {encoder_double_press_window}. Must be non-negative."
+            )
+            raise ValueError("Encoder double_press_window must be non-negative")
+
+        encoder_long_press_threshold = config.get(
+            "System", "Encoder", "long_press_window", required=True
+        )
+        if encoder_long_press_threshold < 0:
+            logger.error(
+                f"Invalid long_press_window: {encoder_long_press_threshold}. Must be non-negative."
+            )
+            raise ValueError("Encoder long_press_window must be non-negative")
 
         self.encoder = RotaryEncoder(
             encoder_gpio_clk,
@@ -77,11 +112,14 @@ class GPIOInputController(InputController):
         self.encoder_button = Button(
             encoder_gpio_sw,
             pull_up=True,
-            bounce_time=0.1,
+            bounce_time=encoder_bounce_time,
             pin_factory=self.factory,
         )
         self.encoder_button.when_pressed = self._on_encoder_button_press
         self.encoder_button.when_released = self._on_encoder_button_release
+
+        self.encoder_double_press_window = encoder_double_press_window
+        self.encoder_long_press_threshold = encoder_long_press_threshold
 
         logger.info("GPIO input controller initialized successfully.")
 
@@ -114,7 +152,7 @@ class GPIOInputController(InputController):
             asyncio.run_coroutine_threadsafe(
                 self.on_encoder_change_callback(1), self.event_loop
             )
-            self.encoder.value = 0
+            self.encoder.value = self.ENCODER_VALUE_RESET
             logger.debug("Encoder: CW")
 
     def _on_encoder_counter_clockwise(self) -> None:
@@ -123,7 +161,7 @@ class GPIOInputController(InputController):
             asyncio.run_coroutine_threadsafe(
                 self.on_encoder_change_callback(-1), self.event_loop
             )
-            self.encoder.value = 0
+            self.encoder.value = self.ENCODER_VALUE_RESET
             logger.debug("Encoder: CCW")
 
     def _on_encoder_button_press(self) -> None:
@@ -139,7 +177,7 @@ class GPIOInputController(InputController):
         press_duration = time.time() - self.button_press_start_time
         self.button_press_start_time = None
 
-        if press_duration >= self.LONG_PRESS_THRESHOLD:
+        if press_duration >= self.encoder_long_press_threshold:
             self._trigger_press(EncoderInput.LONG_PRESS)
         else:
             self._handle_quick_press()
@@ -150,7 +188,7 @@ class GPIOInputController(InputController):
 
         if (
             self.last_press_time
-            and (current_time - self.last_press_time) < self.DOUBLE_PRESS_WINDOW
+            and (current_time - self.last_press_time) < self.encoder_double_press_window
         ):
             self.button_press_count += 1
 
@@ -169,13 +207,13 @@ class GPIOInputController(InputController):
     async def _finalize_press_detection(self) -> None:
         """Wait for double-press window to expire, then trigger the appropriate press."""
         try:
-            await asyncio.sleep(self.DOUBLE_PRESS_WINDOW)
+            await asyncio.sleep(self.encoder_double_press_window)
 
-            if self.button_press_count == 1:
+            if self.button_press_count == self.SINGLE_PRESS_COUNT:
                 self._trigger_press(EncoderInput.SINGLE_PRESS)
-            elif self.button_press_count == 2:
+            elif self.button_press_count == self.DOUBLE_PRESS_COUNT:
                 self._trigger_press(EncoderInput.DOUBLE_PRESS)
-            elif self.button_press_count >= 3:
+            elif self.button_press_count >= self.MIN_TRIPLE_PRESS_COUNT:
                 self._trigger_press(EncoderInput.TRIPLE_PRESS)
 
             self.button_press_count = 0
@@ -207,4 +245,3 @@ class GPIOInputController(InputController):
             self.encoder_button.close()
         if hasattr(self, "tilt_switch"):
             self.tilt_switch.close()
-

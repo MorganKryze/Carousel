@@ -40,6 +40,9 @@ System:
     gpio_clk: 5
     gpio_dt: 6
     gpio_sw: 13
+    bounce_time: 0.05
+    double_press_window: 0.3
+    long_press_window: 0.5
 
 # ------------------ Module Configuration ------------------
 # Modules are the toolboxes used by applications. Disabled modules will result in the
