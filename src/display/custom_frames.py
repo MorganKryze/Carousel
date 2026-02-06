@@ -81,7 +81,6 @@ class CustomFrames:
         :param error_status: The status of the application.
         :return: Image: The error frame.
         """
-        # TODO: assert that this is working
         if (
             error_status == ServiceStatus.INITIALIZING
             or error_status == ServiceStatus.RUNNING
@@ -109,11 +108,14 @@ class CustomFrames:
         draw = ImageDraw.Draw(frame)
         draw.text((5, 5), error_title, fill=RED, font=cls.font)
         draw.text((5, 15), error_description, fill=RED, font=cls.font)
-        draw.textsize(error_description, font=cls.font)
+
+        # Get text dimensions using textbbox (Pillow 8.0.0+)
+        bbox = draw.textbbox((0, 0), error_description, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+
         draw.text(
             (
-                cls.led_cols // 2
-                - draw.textsize(error_description, font=cls.font)[0] // 2,
+                cls.led_cols // 2 - text_width // 2,
                 cls.led_rows // 2,
             ),
             error_description,
