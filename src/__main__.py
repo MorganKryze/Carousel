@@ -1,123 +1,81 @@
 import argparse
-import cProfile
-import pstats
-import time
+import asyncio
 
 from loguru import logger
-from PIL import Image
 
-from core.app_manager import AppManager
-from io.display_controller import DisplayController
-from io.input_controller import InputController
-from core.system_state import SystemState
 from core.config import Configuration
-from display.custom_frames import CustomFrames
+from core.game_loop import GameLoop
 from display.animations import Animations
-from core.logs import Logs
-from core.path import PathTo
-from enums.encoder_input import EncoderInput
-from models.application import Application
+from utils.logs import start_logger
+from utils.path import PathTo
+
+
+async def async_main(use_emulator: bool = False) -> None:
+    """
+    Main async entry point.
+    Orchestrates initialization, loading animation, and game loop execution.
+    """
+    game_loop = GameLoop(target_fps=10, use_emulator=use_emulator)
+
+    animations = Animations()
+
+    if use_emulator:
+        logger.warning(
+            "EMULATOR MODE: About to start display rendering. "
+            "You will see 'RuntimeError: This event loop is already running' - this is expected and can be safely ignored."
+        )
+
+    await animations.loading_animation()
+
+    render_task = asyncio.create_task(game_loop.render_loop())
+
+    game_loop.setup_signal_handlers(render_task)
+
+    try:
+        await render_task
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.info("Shutdown requested.")
+    finally:
+        game_loop.running = False
+
+        if not render_task.done():
+            render_task.cancel()
+            try:
+                await render_task
+            except asyncio.CancelledError:
+                pass
+
+        game_loop.cleanup()
 
 
 @logger.catch
-def __main__() -> None:
+def main() -> None:
+    """
+    Synchronous entry point.
+    Handles CLI arguments and starts the async event loop.
+    """
     parser = argparse.ArgumentParser(description="Carousel LED matrix controller")
-    parser.add_argument("--debug", action="store_true", help="Run with debug console")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
     parser.add_argument("--emulator", action="store_true", help="Run in emulator mode")
-    parser.add_argument("--profile", action="store_true", help="Enable profiling")
     args = parser.parse_args()
 
     PathTo.set_base_directory()
     PathTo.add_library_to_path()
 
-    file_level = "DEBUG"
-    console_level = "DEBUG" if args.debug else "WARNING"
+    log_level = "DEBUG" if args.debug else "WARNING"
+    start_logger(file_level="DEBUG", console_level=log_level)
 
-    Logs.start(file_level=file_level, console_level=console_level)
+    # TODO: by default config should load the last working config, but in case of a failure, for the fallback it might be interesting to be able to reload a config from a specific id
+    config = Configuration()
+    config.load()
 
-    Configuration.load()
-
-    # Initialize Systems
-    state = SystemState()
-    input_controller = InputController()
-    display = DisplayController(use_emulator=args.emulator)
-
-    # Animations
-    animations = Animations()
-    animations.loading_animation()
-
-    AppManager.init_apps()
-
-    # TODO: remove this when webserver is implemented with new config and workflow
-    # server = WebServer()
-    # TODO: port should be configurable
-    # server.start(port=9000, debug=args.debug)
-
-    profiler = None
-    if args.profile:
-        profiler = cProfile.Profile()
-        profiler.enable()
-        logger.info("Profiling enabled.")
-
-    previous_frame: Image = CustomFrames.black()
-    previous_frame_bytes = previous_frame.tobytes()
-    next_tick = time.time()
-    logger.info("Entering main loop.")
     try:
-        while True:
-            # TODO: remove this check when webserver is implemented with new config and workflow
-            if False:
-                # if server.is_user_connected():
-                display.matrix.SetImage(CustomFrames.black())
-            else:
-                if not state.encoder_queue.empty():
-                    state.encoder_state += state.encoder_queue.get()
-
-                if state.has_encoder_increased():
-                    state.encoder_input = EncoderInput.INCREASE_CLOCKWISE
-                    state.reset_encoder_state()
-                elif state.has_encoder_decreased():
-                    state.encoder_input = EncoderInput.DECREASE_COUNTERCLOCKWISE
-                    state.reset_encoder_state()
-
-                current_app: Application = AppManager.get_current_app()
-                generated_frame: Image = current_app.generate(
-                    state.tilt_state, state.encoder_input
-                )
-
-                display_frame = (
-                    generated_frame if state.is_display_on else CustomFrames.black()
-                )
-                if display_frame.mode != "RGB":
-                    display_frame = display_frame.convert("RGB")
-
-                frame_bytes = display_frame.tobytes()
-
-                if frame_bytes != previous_frame_bytes:
-                    previous_frame = display_frame
-                    previous_frame_bytes = frame_bytes
-                    display.matrix.SetImage(display_frame)
-
-                state.reset_encoder_input_status()
-
-            next_tick += display.refresh_rate
-            sleep_time = next_tick - time.time()
-            if sleep_time > 0:
-                time.sleep(sleep_time)
+        asyncio.run(async_main(use_emulator=args.emulator))
     except KeyboardInterrupt:
-        logger.info("Program stopped by user.")
-        display.matrix.SetImage(CustomFrames.black())
-
-        input_controller.cleanup()
-        display.cleanup()
-
-        if profiler:
-            profiler.disable()
-            stats = pstats.Stats(profiler).sort_stats("cumtime")
-            stats.print_stats(20)
-            logger.info("Profiling stats printed.")
-        logger.info("Shutdown complete.")
+        logger.info("Interrupted by user.")
+    except Exception as e:
+        logger.critical(f"Fatal error: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
-    __main__()
+    main()

@@ -24,10 +24,11 @@ Feel free to suggest new apps by [creating an issue](https://github.com/MorganKr
 
 Comprehensive guides to help you get started:
 
-1. [Wiring Guide](./docs/wiring.md)
-2. [Installation Guide](./docs/installation.md)
-3. [Configuration Guide](./docs/configuration.md)
-4. [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
+1. [Installation Guide](./docs/installation.md) - Setup for Raspberry Pi and Docker
+2. [Usage Guide](./docs/usage.md) - Running, keyboard controls, and command reference
+3. [Configuration Guide](./docs/configuration.md) - Customizing apps and settings
+4. [Wiring Guide](./docs/wiring.md) - Hardware connections
+5. [rpi-rgb-led-matrix Library Documentation](https://github.com/hzeller/rpi-rgb-led-matrix/blob/f0e95d3557dfc60759a290300c184074e9ec5874/README.md)
 
 ## Troubleshooting
 
@@ -55,5 +56,7 @@ Finally, we would like to thank all the people who tried the project and gave us
 This project is licensed by the [original author](https://github.com/allenslab) under the GNU GPL v3, which allows you to _use_, _modify_, and _distribute_ the software freely, as long as you **provide the source code** and do not add restrictions that limit others' rights under the same license. For full details, refer to the [LICENSE](LICENSE) file.
 
 [^1]: The weather app is compatible with the [OpenWeatherMap API](https://openweathermap.org/) or [AccuWeather API](https://developer.accuweather.com/). You will need to create an account on their website to get an API key. Although AccuWeather won't require you to enter your credit card details.
+
 [^2]: The Notion todo lists app is compatible with the [Notion API](https://developers.notion.com/). You will need to create an account on their website to get an API key.
+
 [^3]: The Spotify player app is compatible with the [Spotify API](https://developer.spotify.com/). You will need to create an account on their website to get an API key.

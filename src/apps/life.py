@@ -11,7 +11,7 @@ from io.display_controller import DisplayController
 from core.config import Configuration
 from enums.encoder_input import EncoderInput
 from enums.variable_importance import Importance
-from core.path import PathTo
+from utils.path import PathTo
 
 
 class GameOfLifeScreen:

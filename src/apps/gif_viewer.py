@@ -4,47 +4,35 @@ from typing import Callable, Dict, List
 from loguru import logger
 from PIL import Image, ImageDraw, ImageSequence
 
-from io.display_controller import DisplayController
-from core.config import Configuration
+from core.system_context import SystemContext
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from core.path import PathTo
+from utils.path import PathTo
 
 WHITE = (230, 255, 255)
 
 
 class GifPlayer(Application):
-    def __init__(self, callbacks: Dict[str, Callable]):
-        """
-        Initialize the GifPlayer with callbacks.
-
-        :param callbacks: Dict[str, Callable]: Dictionary of callback functions.
-        """
-        super().__init__(callbacks)
+    def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
+        super().__init__(context, callbacks)
         if self.status == ServiceStatus.DISABLED:
-            logger.info(
-                f"[{self.__class__.__name__}] Stopped initialization due to disabled status."
-            )
+            logger.info("Stopped initialization due to disabled status.")
             return
 
-        self.play_limit = Configuration.get_from_app_config(
+        self.play_limit = self.context.config.get_from_app_config(
             self.__class__.__name__, "play_limit", required=True
         )
         if self.play_limit < 1:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                "Play limit must be greater than or equal to 1."
-            )
-        self.led_cols = DisplayController().led_cols
-        self.led_rows = DisplayController().led_rows
+            logger.error("Play limit must be greater than or equal to 1.")
+        self.led_cols = self.context.display.led_cols
+        self.led_rows = self.context.display.led_rows
         self.animations = self.load_animations()
         if not self.animations:
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                f"[{self.__class__.__name__}] No GIFs found, nothing to show up."
-            )
+            logger.error("No GIFs found, nothing to show up.")
         self.current_animation_index = 0
         self.selection_mode = False
         self.current_frame_index = 0
@@ -54,16 +42,14 @@ class GifPlayer(Application):
 
         if self.status == ServiceStatus.ERROR_APP_CONFIG:
             logger.error(
-                f"[{self.__class__.__name__}] Application configuration errors, please check the configuration before restarting."
+                "Application configuration errors, please check the configuration before restarting."
             )
             return
 
         self.status = ServiceStatus.RUNNING
-        logger.info(f"[{self.__class__.__name__}] Running.")
+        logger.info("App running.")
 
-    def generate(
-        self, tilt_state: TiltState, encoder_input: EncoderInput
-    ) -> Image:
+    def generate(self, tilt_state: TiltState, encoder_input: EncoderInput) -> Image:
         """
         Generate the frame to draw on the LED matrix.
 

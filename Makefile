@@ -11,10 +11,10 @@ COMPOSE_FILE := docker/compose.yml
 # ===== Development targets =====
 .PHONY: install
 install:
-	@echo "[$(BLUE)  INFO   $(RESET)] $(BLUE)Installing project python dependencies...$(RESET)"
-	@sudo pip install --break-system-packages --no-cache-dir --ignore-installed -e . || \
-		{ echo "[$(RED)  ERROR  $(RESET)] $(RED)Failed to install project dependencies. Please check the logs for error.$(RESET)"; exit 1; }
-	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Project dependencies installed successfully.$(RESET)"
+	@echo "[$(BLUE)  INFO   $(RESET)] $(BLUE)Installing production python dependencies...$(RESET)"
+	@sudo pip install --break-system-packages --no-cache-dir --ignore-installed -e .[production] || \
+		{ echo "[$(RED)  ERROR  $(RESET)] $(RED)Failed to install production dependencies. Please check the logs for error.$(RESET)"; exit 1; }
+	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Production dependencies installed successfully.$(RESET)"
 
 .PHONY: build
 build:
@@ -51,10 +51,17 @@ dev:
 	@cd $(shell pwd) && sudo python src --debug
 	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Project running with debug logging.$(RESET)"
 
+.PHONY: install-dev
+install-dev:
+	@echo "[$(BLUE)  INFO   $(RESET)] $(BLUE)Installing development dependencies (emulator, keyboard input)...$(RESET)"
+	@pip install --no-cache-dir -e .[development] || \
+		{ echo "[$(RED)  ERROR  $(RESET)] $(RED)Failed to install development dependencies.$(RESET)"; exit 1; }
+	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Development dependencies installed successfully.$(RESET)"
+
 .PHONY: dev-emulator
 dev-emulator:
 	@echo "[$(BLUE)  INFO   $(RESET)] $(BLUE)Running project with debug-level console logging in emulator mode...$(RESET)"
-	@cd $(shell pwd) && sudo python src --debug --emulator
+	@cd $(shell pwd) && python src --debug --emulator
 	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Project running in emulator mode with debug logging.$(RESET)"
 
 # ===== Docker deployment targets =====
@@ -115,9 +122,14 @@ docker-update:
 	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Docker containers updated and restarted.$(RESET)"
 
 # ===== Combined setup target =====
+.PHONY: setup-prod
+setup-prod: install build
+	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Production environment setup complete.$(RESET)"
+
 .PHONY: setup-dev
-setup-dev: install build
-	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Development environment setup complete.$(RESET)"
+setup-dev: install-dev
+	@echo "[$(GREEN) SUCCESS $(RESET)] $(GREEN)Desktop development environment setup complete.$(RESET)"
+	@echo "[$(BLUE)  INFO   $(RESET)] $(BLUE)Run 'make dev-emulator' to start the emulator.$(RESET)"
 
 .PHONY: setup-docker
 setup-docker: docker-pull
@@ -162,14 +174,18 @@ update:
 help:
 	@echo "$(BLUE)Carousel Project - Available Commands:$(RESET)"
 	@echo ""
-	@echo "$(GREEN)Development:$(RESET)"
-	@echo "  make install         - Install Python dependencies"
+	@echo "$(GREEN)Production (Raspberry Pi):$(RESET)"
+	@echo "  make install         - Install production dependencies (GPIO)"
 	@echo "  make build           - Build rpi-rgb-led-matrix library"
-	@echo "  make setup-dev       - Complete dev setup (install + build)"
+	@echo "  make setup-prod      - Complete production setup (install + build)"
 	@echo "  make example         - Run LED matrix demo"
-	@echo "  make run             - Run the project"
-	@echo "  make dev             - Run with debug logging"
-	@echo "  make dev-emulator    - Run in emulator mode with debug"
+	@echo "  make run             - Run the project on hardware"
+	@echo "  make dev             - Run with debug logging on hardware"
+	@echo ""
+	@echo "$(GREEN)Desktop Development:$(RESET)"
+	@echo "  make install-dev     - Install dev dependencies (emulator, keyboard)"
+	@echo "  make setup-dev       - Complete desktop dev setup"
+	@echo "  make dev-emulator    - Run in emulator mode with keyboard controls"
 	@echo ""
 	@echo "$(GREEN)Docker Deployment:$(RESET)"
 	@echo "  make docker-pull     - Pull latest Docker images"

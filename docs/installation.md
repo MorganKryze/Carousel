@@ -40,8 +40,8 @@ Click **Next** → **Edit Settings** and configure:
 
 #### Services Tab
 
-- ✅ **Enable SSH**
-- ✅ **Use password authentication** (or configure public key authentication)
+- **Enable SSH**
+- **Use password authentication** (or configure public key authentication)
 
 Click **Save** → **Yes** to write the image.
 
@@ -77,6 +77,7 @@ curl -sSL https://raw.githubusercontent.com/MorganKryze/Carousel/main/scripts/in
 - Configures pigpiod service for GPIO control
 - Applies performance optimizations
 - Clones the Carousel repository
+- Setup docker environment
 - **Reboots the system** to apply kernel changes
 
 > **Important**: The system will automatically reboot after installation. Reconnect via SSH after 1-2 minutes.
@@ -105,34 +106,7 @@ make docker-deploy
 
 This command pulls the latest images and starts the containers.
 
-#### View Logs
-
-```bash
-# View all logs
-make docker-logs
-
-# View only Carousel logs
-make docker-logs-carousel
-
-# View only Watchtower logs (update checker)
-make docker-logs-watchtower
-```
-
-#### Manage Containers
-
-```bash
-# Check status
-make docker-ps
-
-# Stop containers
-make docker-down
-
-# Restart containers
-make docker-restart
-
-# Manual update (Watchtower auto-updates daily)
-make docker-update
-```
+Watchtower will automatically check for updates daily. For manual management and monitoring, see the [usage guide](./usage.md).
 
 ---
 
@@ -173,51 +147,6 @@ This runs a demo animation on your LED matrix. **Only run this if you've complet
 > 3. Check power supply (5V 4A minimum recommended)
 > 4. Ensure proper grounding connections
 
-#### Step 4: Run Carousel
-
-```bash
-# Standard run
-make run
-
-# Development mode with debug logging
-make dev
-
-# Emulator mode (no led matrix required)
-make dev-emulator
-```
-
----
-
-## Quick Reference Commands
-
-### Docker Commands
-
-```bash
-make docker-deploy        # Pull images and start containers
-make docker-up            # Start containers
-make docker-down          # Stop containers
-make docker-restart       # Restart containers
-make docker-logs          # View all logs
-make docker-ps            # Check container status
-make docker-update        # Manual update
-make docker-clean         # Remove containers and volumes
-```
-
-### Development Commands
-
-```bash
-make install              # Install dependencies
-make build                # Build LED library
-make setup-dev            # Install + build in one command
-make run                  # Run project
-make dev                  # Run with debug logging
-make dev-emulator         # Run in emulator mode
-make example              # Test LED matrix
-make clean                # Clean build artifacts
-make update               # Update repository and dependencies
-make help                 # Show all available commands
-```
-
 ---
 
 ## Next Steps
@@ -242,16 +171,33 @@ make help                 # Show all available commands
    ssh-copy-id admin@carousel.local
    ```
 
+### Running Carousel
+
+After installation, refer to the [usage guide](./usage.md) for:
+
+- Running in different modes (production, development, docker)
+- Keyboard controls for emulator mode
+- Command reference
+- Configuration and troubleshooting
+
 ### Configuration
 
-- Edit settings in `~/Carousel/configs/` directory
-- Logs are stored in `~/Carousel/logs/` directory
-- View the [configuration guide](./docs/configuration.md) for advanced options
+Configuration files are located in `~/Carousel/configs/` directory. See the [configuration guide](./configuration.md) for details on:
+
+- System settings (GPIO pins, display parameters)
+- Application configuration (API keys, app-specific settings)
+- Module configuration (notifications, weather, spotify)
 
 ### Updates
 
-- **Docker**: Watchtower automatically checks for updates every 24 hours
-- **Source**: Run `make update` to pull latest changes
+**Docker deployment**: Watchtower automatically checks for updates every 24 hours
+
+**Source deployment**: Update manually with:
+
+```bash
+cd ~/Carousel
+make update
+```
 
 ---
 
@@ -272,21 +218,24 @@ make help                 # Show all available commands
 
 ### Display Not Working
 
-1. Verify wiring connections
+Run `make example` to test the LED matrix. If issues persist:
+
+1. Verify wiring connections against the [wiring guide](./wiring.md)
 2. Check power supply (5V 4A recommended)
-3. Test with `make example` before running full project
-4. Review [hardware troubleshooting guide](./docs/troubleshooting.md)
+3. Review the [usage guide](./usage.md) troubleshooting section
 
-### Docker Issues
+### Docker Installation Issues
 
-- Verify Docker is running: `sudo systemctl status docker`
-- Check Docker logs: `make docker-logs`
+- Verify Docker is installed: `docker --version`
+- Check Docker service: `sudo systemctl status docker`
 - Restart Docker service: `sudo systemctl restart docker`
+- Review installer script output for errors
 
 ---
 
 ## Getting Help
 
-- **Documentation**: [docs/](./docs/)
+- **Usage Instructions**: [usage.md](./usage.md)
+- **Configuration**: [configuration.md](./configuration.md)
+- **Wiring**: [wiring.md](./wiring.md)
 - **Issues**: [GitHub Issues](https://github.com/MorganKryze/Carousel/issues)
-- **Project**: [github.com/MorganKryze/Carousel](https://github.com/MorganKryze/Carousel)

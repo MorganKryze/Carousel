@@ -43,3 +43,10 @@ logs/
 # Environment variables
 .env
 .env.*
+
+# Misc
+.github/
+cad/
+configs/
+docs/
+scripts/

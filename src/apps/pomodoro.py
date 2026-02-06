@@ -5,34 +5,26 @@ from typing import Callable, Dict
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
-from io.display_controller import DisplayController
-from core.config import Configuration
+from core.system_context import SystemContext
 from enums.encoder_input import EncoderInput
 from enums.service_status import ServiceStatus
 from enums.tilt_input import TiltState
 from models.application import Application
-from core.path import PathTo
+from utils.path import PathTo
 
 # Constants
 DEFAULT_FONT_SIZE = 5
 
 
 class Pomodoro(Application):
-    def __init__(self, callbacks: Dict[str, Callable]):
-        """
-        Initialize the PomodoroScreen and callbacks.
-
-        :param callbacks: Dict[str, Callable]: Dictionary of callback functions.
-        """
-        super().__init__(callbacks)
+    def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
+        super().__init__(context, callbacks)
         if self.status == ServiceStatus.DISABLED:
-            logger.info(
-                f"[{self.__class__.__name__}] Stopped initialization due to disabled status."
-            )
+            logger.info("Stopped initialization due to disabled status.")
             return
 
         self.work_duration = timedelta(
-            minutes=Configuration.get_from_app_config(
+            minutes=self.context.config.get_from_app_config(
                 self.__class__.__name__,
                 "work_duration_in_minutes",
                 required=True,
@@ -40,11 +32,9 @@ class Pomodoro(Application):
         )
         if self.work_duration <= timedelta(seconds=0):
             self.status = ServiceStatus.ERROR_APP_CONFIG
-            logger.error(
-                f"[{self.__class__.__name__}] Work duration must be greater than 0."
-            )
+            logger.error("Work duration must be greater than 0.")
         self.short_duration = timedelta(
-            minutes=Configuration.get_from_app_config(
+            minutes=self.context.config.get_from_app_config(
                 self.__class__.__name__,
                 "break_duration_in_minutes",
                 required=True,
@@ -56,10 +46,10 @@ class Pomodoro(Application):
         ):
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                f"[{self.__class__.__name__}] Break duration must be greater than 0 and less than work duration."
+                "Break duration must be greater than 0 and less than work duration."
             )
         self.long_duration = timedelta(
-            minutes=Configuration.get_from_app_config(
+            minutes=self.context.config.get_from_app_config(
                 self.__class__.__name__,
                 "long_break_duration_in_minutes",
                 required=True,
@@ -71,12 +61,12 @@ class Pomodoro(Application):
         ):
             self.status = ServiceStatus.ERROR_APP_CONFIG
             logger.error(
-                f"[{self.__class__.__name__}] Long break duration must be greater than 0 and greater than short break duration."
+                "Long break duration must be greater than 0 and greater than short break duration."
             )
         self.active = False
         self.font = ImageFont.truetype(PathTo.FONT_FILE, DEFAULT_FONT_SIZE)
-        self.canvas_width = DisplayController().led_cols
-        self.canvas_height = DisplayController().led_rows
+        self.canvas_width = self.context.display.led_cols
+        self.canvas_height = self.context.display.led_rows
         self.cycle_order = "WSWSWL"
         self.cycle_idx = 0
         self.status = ""
@@ -85,12 +75,12 @@ class Pomodoro(Application):
 
         if self.status == ServiceStatus.ERROR_APP_CONFIG:
             logger.error(
-                f"[{self.__class__.__name__}] Application configuration errors, please check the configuration before restarting."
+                "Application configuration errors, please check the configuration before restarting."
             )
             return
 
         self.status = ServiceStatus.RUNNING
-        logger.info(f"[{self.__class__.__name__}] Running.")
+        logger.info("App running.")
 
     def generate(self, tilt_state: TiltState, encoder_input: EncoderInput) -> Image:
         """
@@ -195,5 +185,4 @@ class Pomodoro(Application):
         except Exception as e:
             self.status = ServiceStatus.ERROR_APP_INTERNAL
             logger.error(f"[PomodoroScreen App] Error generating frame: {e}")
-            return self.generate_on_error()
             return self.generate_on_error()

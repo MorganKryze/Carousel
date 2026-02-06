@@ -402,12 +402,13 @@ function setup_docker_environment() {
 }
 
 function display_next_steps() {
+    txt
     txt "Next steps - Choose your deployment method:"
     txt "View all commands: ${BLUE}make help${RESET}"
     txt
     txt "${GREEN}Option 1: Development Mode (Direct Python)${RESET}"
     txt "1. After reboot, navigate to: ${BLUE}cd ~/$REPOSITORY_NAME${RESET}"
-    txt "2. Setup development environment: ${BLUE}make setup-dev${RESET}"
+    txt "2. Setup development environment: ${BLUE}make setup-prod${RESET}"
     txt "3. Test the library: ${BLUE}make example${RESET}"
     txt "4. Run the project: ${BLUE}make run${RESET}"
     txt
@@ -415,6 +416,7 @@ function display_next_steps() {
     txt "1. After reboot, navigate to: ${BLUE}cd ~/$REPOSITORY_NAME${RESET}"
     txt "2. Start the project: ${BLUE}make docker-deploy${RESET}"
     txt "3. View logs: ${BLUE}make docker-logs${RESET}"
+    txt
 
     sleep $LOW_DELAY
     warning "The device will reboot in $HIGH_DELAY seconds. Keep this terminal open to continue with the next steps after reboot."

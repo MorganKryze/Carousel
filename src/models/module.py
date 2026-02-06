@@ -2,20 +2,22 @@
 
 from loguru import logger
 
-from core.config import Configuration
+from core.system_context import SystemContext
 from enums.service_status import ServiceStatus
 
 
 class Module:
     """Modules are components that provide resources or functionnalities that can be used by multiple applications."""
 
-    def __init__(self):
+    def __init__(self, context: SystemContext):
         self.status: ServiceStatus = ServiceStatus.INITIALIZING
+        
+        self.context = context
         logger.debug(f"[{self.__class__.__name__}] Initializing metadata...")
-        self.name: str = Configuration.get_from_module(
+        self.name: str = self.context.config.get_from_module(
             self.__class__.__name__, "name", required=True
         )
-        self.description: str = Configuration.get_from_module(
+        self.description: str = self.context.config.get_from_module(
             self.__class__.__name__, "description", required=True
         )
         logger.debug("Initializing configuration...")

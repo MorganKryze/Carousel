@@ -2,7 +2,7 @@ from loguru import logger
 from PIL import Image, ImageDraw, ImageFont
 
 from enums.service_status import ServiceStatus
-from core.path import PathTo
+from utils.path import PathTo
 
 # Constants
 FONT_SIZE = 5
@@ -81,7 +81,6 @@ class CustomFrames:
         :param error_status: The status of the application.
         :return: Image: The error frame.
         """
-        # TODO: assert that this is working
         if (
             error_status == ServiceStatus.INITIALIZING
             or error_status == ServiceStatus.RUNNING
@@ -109,16 +108,43 @@ class CustomFrames:
         draw = ImageDraw.Draw(frame)
         draw.text((5, 5), error_title, fill=RED, font=cls.font)
         draw.text((5, 15), error_description, fill=RED, font=cls.font)
-        draw.textsize(error_description, font=cls.font)
+
+        # Get text dimensions using textbbox (Pillow 8.0.0+)
+        bbox = draw.textbbox((0, 0), error_description, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+
         draw.text(
             (
-                cls.led_cols // 2
-                - draw.textsize(error_description, font=cls.font)[0] // 2,
+                cls.led_cols // 2 - text_width // 2,
                 cls.led_rows // 2,
             ),
             error_description,
             fill=RED,
             font=cls.font,
         )
+        draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
+        return frame
+
+    @classmethod
+    def turn_frame(cls, app_name: str, missing_orientation: str) -> Image:
+        """
+        Generate a frame telling the user to turn the carousel for missing content.
+        """
+        frame = cls.black()
+        draw = ImageDraw.Draw(frame)
+
+        title = f"{app_name}"
+        message = f"No {missing_orientation} content. Turn carousel."
+
+        draw.text((2, 2), title, fill=RED, font=cls.font)
+
+        bbox = draw.textbbox((0, 0), message, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        x = max(0, (cls.led_cols - text_width) // 2)
+        y = max(0, (cls.led_rows - text_height) // 2)
+
+        draw.text((x, y), message, fill=RED, font=cls.font)
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
         return frame

@@ -29,7 +29,7 @@ RUN apt-get update && \
         libtiff-dev \
         libwebp-dev && \
     pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e . && \
+    pip install --no-cache-dir -e .[production] && \
     if [ ! -f ./rpi-rgb-led-matrix/Makefile ]; then \
         rm -rf ./rpi-rgb-led-matrix && \
         git clone https://github.com/hzeller/rpi-rgb-led-matrix.git ./rpi-rgb-led-matrix; \
