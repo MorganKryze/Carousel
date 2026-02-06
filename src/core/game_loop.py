@@ -21,6 +21,7 @@ class GameLoop:
         self.time_per_frame = 1.0 / target_fps
         self.last_frame_time = time.time()
         self.running = True
+        self.last_processed_encoder_value = 0
 
         # Initialize singletons in correct order
         self.context = SystemContext(use_emulator=use_emulator)
@@ -72,16 +73,16 @@ class GameLoop:
         """Process a single frame: handle inputs, generate image, update display."""
         state = self.context.state
 
-        # Accumulate all encoder changes from this frame
         total_encoder_change = 0
         while not state.encoder_queue.empty():
             total_encoder_change += state.encoder_queue.get_nowait()
 
-        # Apply accumulated change only once per frame
-        if total_encoder_change > 0:
-            self.app_manager.switch_next_app()
-        elif total_encoder_change < 0:
-            self.app_manager.switch_prev_app()
+        if total_encoder_change != self.last_processed_encoder_value:
+            if total_encoder_change > self.last_processed_encoder_value:
+                self.app_manager.switch_next_app()
+            elif total_encoder_change < self.last_processed_encoder_value:
+                self.app_manager.switch_prev_app()
+            self.last_processed_encoder_value = total_encoder_change
 
         current_app: Application = self.app_manager.get_current_app()
         generated_frame: Image = current_app.generate(
