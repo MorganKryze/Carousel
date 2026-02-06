@@ -5,7 +5,8 @@ from loguru import logger
 from core.config import Configuration
 from core.system_state import SystemState
 from hardware.display_controller import DisplayController
-from hardware.keyboard_input_controller import GPIOInputController, KeyboardInputController
+from hardware.gpio_input_controller import GPIOInputController
+from hardware.keyboard_input_controller import KeyboardInputController
 
 
 class SystemContext:
