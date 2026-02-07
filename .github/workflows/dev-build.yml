@@ -12,7 +12,7 @@ permissions:
 jobs:
   build-and-push-image:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -47,7 +47,6 @@ jobs:
             org.opencontainers.image.vendor=MorganKryze
 
       - name: Build and push Docker image
-        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -63,13 +62,31 @@ jobs:
           build-args: |
             BUILD_DATE=${{ github.event.head_commit.timestamp }}
 
+      - name: Wait for image in registry
+        timeout-minutes: 5
+        run: |
+          echo "Checking if image is available in registry..."
+          for i in {1..30}; do
+            if docker manifest inspect ghcr.io/morgankryze/carousel:unstable > /dev/null 2>&1; then
+              echo "✅ Image is available in registry!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Image not ready yet, waiting 10 seconds..."
+            sleep 10
+          done
+          echo "❌ Timeout waiting for image in registry"
+          exit 1
+
       - name: Run Trivy security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ steps.build.outputs.imageid }}
+          image-ref: ghcr.io/morgankryze/carousel:unstable
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
