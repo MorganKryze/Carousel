@@ -51,6 +51,7 @@ jobs:
             org.opencontainers.image.vendor=MorganKryze
 
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -69,7 +70,7 @@ jobs:
       - name: Run Trivy security scan
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ghcr.io/morgankryze/carousel:${{ github.event.release.tag_name }}
+          image-ref: ${{ steps.build.outputs.imageid }}
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH'
