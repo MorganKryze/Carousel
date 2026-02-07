@@ -22,7 +22,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: morgankryze
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
@@ -32,9 +32,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/${{ github.repository_owner }}/carousel:stable
-            ghcr.io/${{ github.repository_owner }}/carousel:latest
-            ghcr.io/${{ github.repository_owner }}/carousel:${{ github.event.release.tag_name }}
-            ghcr.io/${{ github.repository_owner }}/carousel:${{ github.sha }}
+            ghcr.io/morgankryze/carousel:stable
+            ghcr.io/morgankryze/carousel:latest
+            ghcr.io/morgankryze/carousel:${{ github.event.release.tag_name }}
+            ghcr.io/morgankryze/carousel:${{ github.sha }}
           build-args: |
             BUILD_DATE=${{ github.event.release.published_at }}
