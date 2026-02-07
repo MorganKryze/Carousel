@@ -1,6 +1,6 @@
 [project]
 name = "Carousel"
-version = "0.0.0"
+version = "0.0.3"
 description = "RGB led matrix dashboard, providing apps for various purposes."
 readme = "README.md"
 license = "GPL-3.0-only"
