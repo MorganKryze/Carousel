@@ -493,7 +493,7 @@ class Configuration:
 
         :return: List of paths to working (non-broken) generations, newest first.
         """
-        return get_sorted_working_generation_paths()
+        return get_sorted_working_generation_paths(PathTo.GENERATIONS_FOLDER)
 
     def _extract_id_from_path(self, path: str) -> int:
         """Extract generation ID from a file path.
