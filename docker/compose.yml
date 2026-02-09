@@ -25,7 +25,8 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
+      TZ: Europe/Paris
       WATCHTOWER_CLEANUP: true
       WATCHTOWER_LABEL_ENABLE: true
+      # SPRING For 4 AM daily update checks
       WATCHTOWER_SCHEDULE: 0 0 4 * * *
-      TZ: Europe/Paris
