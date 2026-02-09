@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 
-from apps import gif_viewer, main_screen, pomodoro
+from apps import gif_viewer, life, main_screen, pomodoro
 from core.system_context import SystemContext
 from models.application import Application
 from models.module import Module
@@ -88,6 +88,7 @@ class AppManager:
             main_screen.MainScreen(self.context, callbacks),
             gif_viewer.GifPlayer(self.context, callbacks),
             pomodoro.Pomodoro(self.context, callbacks),
+            life.GameOfLife(self.context, callbacks),
         ]
 
     def _filter_apps_for_carousel(self) -> List[Application]:

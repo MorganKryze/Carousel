@@ -119,7 +119,7 @@ Apps:
       play_limit: 5
     dependencies:
   GameOfLife:
-    enabled: false
+    enabled: true
     meta:
       name: Game of Life
       description: A cellular automaton simulation that displays patterns on the matrix.
