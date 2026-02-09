@@ -28,5 +28,6 @@ services:
       TZ: Europe/Paris
       WATCHTOWER_CLEANUP: true
       WATCHTOWER_LABEL_ENABLE: true
+      WATCHTOWER_UPDATE_ON_START: true
       # SPRING For 4 AM daily update checks
       WATCHTOWER_SCHEDULE: 0 0 4 * * *
