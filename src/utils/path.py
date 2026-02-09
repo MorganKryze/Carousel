@@ -6,8 +6,8 @@ import sys
 class PathTo:
     base_directory: str = ""
 
-    GENERATIONS_FOLDER: str = "configs/generations/"
-    TEMPLATE_CONFIG_FILE: str = "configs/template.config.yaml"
+    GENERATIONS_FOLDER: str = "configs/"
+    TEMPLATE_CONFIG_FILE: str = "template.config.yaml"
     PYPROJECT_FILE: str = "pyproject.toml"
 
     LOGS_FOLDER: str = "logs"

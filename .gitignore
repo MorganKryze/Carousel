@@ -26,4 +26,4 @@ main.sln
 # Config
 config.yaml
 temp.config.yaml
-configs/generations/
+configs/
