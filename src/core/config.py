@@ -1,40 +1,59 @@
-import os
-import socket
-import sys
-import tomllib
-from datetime import datetime
-from typing import Any, Dict, Optional
+"""Configuration management with generational versioning and automatic fallback."""
 
-import yaml
+import os
+import sys
+from copy import deepcopy
+from datetime import datetime, timedelta
+from typing import Any, Dict, Optional, Tuple
+
 from loguru import logger
 
+from core.config_helpers import (
+    ensure_metadata_defaults,
+    extract_generation_id,
+    get_all_generation_filenames,
+    get_sorted_working_generation_paths,
+    get_version_from_pyproject,
+    load_yaml_file,
+    save_yaml_file,
+    validate_config_structure,
+)
 from utils.path import PathTo
 
 
 class Configuration:
-    """
-    Singleton configuration manager.
-    Handles loading, saving, and accessing configuration data.
+    """Singleton configuration manager with generational versioning.
+
+    Handles loading, saving, and accessing configuration data with automatic
+    fallback to previous working versions and garbage collection of old files.
     """
 
     _instance: Optional["Configuration"] = None
 
     def __new__(cls) -> "Configuration":
+        """Ensure only one instance exists."""
         if cls._instance is None:
             cls._instance = super(Configuration, cls).__new__(cls)
             cls._instance._initialize()
         return cls._instance
 
     def _initialize(self) -> None:
-        """Initialize configuration state."""
+        """Initialize configuration state on creation."""
         self.file_path: str = ""
         self.latest_generation_id: int = 0
         self.latest_working_generation_id: int = 0
         self.configuration_dictionary: Dict[str, Any] = {}
 
+        self.keep_working_generations: int = 10
+        self.keep_broken_generations: int = 5
+        self.max_generation_age_days: int = 30
+
     def load(self) -> None:
-        """
-        Load configuration from file or create a new one from the template if it doesn't exist.
+        """Load configuration from disk.
+
+        Attempts to load the latest working generation. If none exists,
+        creates one from the template. Falls back through older generations
+        if the latest one is invalid. Cleans up old files after loading.
         """
         logger.info("Loading configuration...")
         self.latest_generation_id = self.get_latest_generation_id()
@@ -43,176 +62,216 @@ class Configuration:
         if self.latest_generation_id == 0:
             self.create_new_configuration_from_template()
 
-        self.file_path = self.get_latest_working_generation_filepath()
-        try:
-            with open(self.file_path, "r") as f:
-                self.configuration_dictionary = yaml.safe_load(f)
-            logger.info("Successfully loaded the configuration file.")
-        except Exception:
-            self.critical_exit(f"Failed to load configuration file '{self.file_path}'")
+        loaded = self._load_latest_working_config()
+        if not loaded:
+            logger.warning("No valid configuration found. Rebuilding from template.")
+            self.create_new_configuration_from_template()
+            loaded = self._load_latest_working_config()
+            if not loaded:
+                self.critical_exit("Failed to load any valid configuration.")
+
+        self._cleanup_generations()
 
     def create_new_configuration_from_template(self) -> None:
-        """
-        Initialize the configuration from a template file.
+        """Create a new generation from the template configuration file.
+
+        Raises:
+            Calls critical_exit if template not found or parsing fails.
         """
         logger.info("Using template config file to create a new config.")
         template_file_path = PathTo.TEMPLATE_CONFIG_FILE
-        try:
-            with open(template_file_path, "r") as template_file:
-                data = yaml.safe_load(template_file)
-                logger.debug("Template config file loaded successfully.")
-            data["Metadata"]["id"] = 1
-            data["Metadata"]["version"] = get_version_from_pyproject()
-            data["Metadata"]["created_at"] = datetime.now().isoformat(
-                sep=" ", timespec="minutes"
-            )
-            logger.debug("Metadata updated with current time and version.")
-            if not self.create_new_config_generation(data):
-                self.critical_exit(
-                    "Failed to create a new configuration generation from the template."
-                )
-        except FileNotFoundError:
-            self.critical_exit(f"Template config file not found: {template_file_path}")
-        except yaml.YAMLError:
+
+        template_data = load_yaml_file(template_file_path)
+        if template_data is None:
             self.critical_exit(
-                f"Error parsing template config file: {template_file_path}"
+                f"Failed to load template config file: {template_file_path}"
+            )
+
+        template_data["Metadata"]["id"] = 1
+        template_data["Metadata"]["version"] = get_version_from_pyproject()
+        template_data["Metadata"]["created_at"] = datetime.now().isoformat(
+            sep=" ", timespec="minutes"
+        )
+        logger.debug("Metadata updated with current time and version.")
+
+        if not self.create_new_config_generation(template_data):
+            self.critical_exit(
+                "Failed to create a new configuration generation from template."
             )
 
     def create_new_config_generation(self, config: Dict[str, Any]) -> bool:
-        """
-        Create a new configuration generation by saving the current configuration to a new file.
+        """Create and save a new configuration generation.
+
+        Validates metadata, assigns the next generation ID, and atomically
+        saves the configuration to disk. Updates internal state only on success.
 
         :param config: The configuration dictionary to save.
-        :return: True if the generation was created successfully, False otherwise.
+        :return: True if generation created successfully, False otherwise.
         """
         if not os.path.exists(PathTo.GENERATIONS_FOLDER):
             os.makedirs(PathTo.GENERATIONS_FOLDER)
             logger.debug("Generations folder created.")
-        if config["Metadata"]["id"] != self.latest_generation_id + 1:
-            logger.error(
-                "The provided configuration ID does not match the expected next ID."
-            )
-            return False
-        if config["Metadata"]["id"] > 1 and config["Metadata"]["origin"] != "user":
-            logger.error(
-                "The provided configuration is not from a user and cannot be used to create a new generation."
-            )
-            config["Metadata"]["origin"] = "user"
 
-        self.latest_generation_id += 1
-        self.latest_working_generation_id = self.latest_generation_id
-        generation_file_path = os.path.join(
-            PathTo.GENERATIONS_FOLDER,
-            f"generation_{config['Metadata']['id']}.yaml",
+        working_config = deepcopy(config)
+        if not self._ensure_metadata(working_config):
+            logger.error("Configuration metadata missing or invalid.")
+            return False
+
+        expected_id = self.latest_generation_id + 1
+        working_config["Metadata"]["id"] = expected_id
+        working_config["Metadata"]["origin"] = working_config["Metadata"].get(
+            "origin", "user"
         )
+        if expected_id > 1 and working_config["Metadata"]["origin"] != "user":
+            working_config["Metadata"]["origin"] = "user"
 
-        is_saved = self.save(config)
-        if not is_saved:
-            logger.error(f"Failed to save the new generation at {generation_file_path}")
+        if not self.save(working_config):
+            logger.error(f"Failed to save new generation with ID {expected_id}")
             return False
-        logger.info(f"New generation created: {generation_file_path}")
+
+        # Update state after successful save
+        self.latest_generation_id = expected_id
+        self.latest_working_generation_id = expected_id
+        self.configuration_dictionary = working_config
+        self.file_path = os.path.join(
+            PathTo.GENERATIONS_FOLDER, f"generation_{expected_id}.yaml"
+        )
+        logger.info(f"New generation created: {self.file_path}")
         return True
 
     def save(self, config: Dict[str, Any], is_broken: bool = False) -> bool:
-        """
-        Save the configuration dictionary to a YAML file.
+        """Save configuration to disk atomically.
 
-        :return: True if the file was written successfully, False otherwise.
+        Writes to a temporary file, syncs to disk, then atomically replaces
+        the target file to prevent corruption.
+
+        :param config: The configuration dictionary to save.
+        :param is_broken: If True, saves with .broken.yaml extension.
+        :return: True if save succeeded, False otherwise.
         """
+        config_id = config.get("Metadata", {}).get("id")
         normal_path = os.path.join(
-            PathTo.GENERATIONS_FOLDER, f"generation_{config['Metadata']['id']}.yaml"
+            PathTo.GENERATIONS_FOLDER, f"generation_{config_id}.yaml"
         )
         broken_path = normal_path.replace(".yaml", ".broken.yaml")
+        target_path = broken_path if is_broken else normal_path
 
-        try:
-            if os.path.exists(normal_path) and not is_broken:
-                logger.warning(
-                    f"Configuration file already exists: {normal_path}. Overwriting."
-                )
-            with open(normal_path, "w") as f:
-                yaml.safe_dump(config, f, default_flow_style=False)
-            logger.info(f"Configuration saved to {normal_path}")
-            if is_broken:
-                os.rename(normal_path, broken_path)
-                logger.info(
-                    f"Configuration marked as broken and saved to {broken_path}"
-                )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to save configuration: {e}")
-            return False
+        return save_yaml_file(target_path, config)
 
     def get(self, *keys: str, default: Any = None, required: bool = False) -> Any:
-        """
-        Reads a value from the configuration dictionary using a variable number of keys.
+        """Get a configuration value using nested key path.
 
-        :param keys: Variable number of keys to navigate through the dictionary hierarchy.
-        :param default: Default value to return if the key path doesn't exist.
-        :param required: If True, flags the configuration as broken if key is missing or None.
-        :return: The value at the specified key path, or the default value if not found.
+        :param keys: Variable number of keys to navigate hierarchy.
+        :param default: Default value if key path not found.
+        :param required: If True, exit if key missing or None.
+
+        :return: Value at key path, or default if not found.
         """
         if not keys:
             return self.configuration_dictionary
 
         current = self.configuration_dictionary
+        key_path = " -> ".join(keys)
+
         for key in keys:
             if isinstance(current, dict) and key in current:
                 current = current[key]
             else:
-                logger.debug(f"Key path not found: {' -> '.join(keys)}")
+                logger.debug(f"Key path not found: {key_path}")
                 if required and default is None:
-                    self.critical_exit(
-                        f"Required key path not found: {' -> '.join(keys)}"
-                    )
+                    self.critical_exit(f"Required key path not found: {key_path}")
                 return default
 
         if required and current is None:
-            self.critical_exit(f"Required key path has None value: {' -> '.join(keys)}")
+            self.critical_exit(f"Required key path has None value: {key_path}")
 
-        logger.debug(f"Found value at: {' -> '.join(keys)}")
+        logger.debug(f"Found value at: {key_path}")
         return current
 
     def get_from_module(
-        self, module_name: str, *keys: str, default: Any = None, required: bool = False
+        self,
+        module_name: str,
+        *keys: str,
+        default: Any = None,
+        required: bool = False,
     ) -> Any:
-        """
-        Reads a value from the module's configuration using a variable number of keys.
+        """Get a value from a module's configuration.
+
+        :param module_name: Name of the module.
+        :param keys: Variable number of keys in module config.
+        :param default: Default value if not found.
+        :param required: If True, exit if key missing or None.
+
+        :return: Value from module config, or default.
         """
         return self.get(
             "Modules", module_name, *keys, default=default, required=required
         )
 
     def get_from_app(
-        self, app_name: str, *keys: str, default: Any = None, required: bool = False
+        self,
+        app_name: str,
+        *keys: str,
+        default: Any = None,
+        required: bool = False,
     ) -> Any:
-        """
-        Reads a value from the application's configuration using a variable number of keys.
+        """Get a value from an app's configuration.
+
+        :param app_name: Name of the app.
+        :param keys: Variable number of keys in app config.
+        :param default: Default value if not found.
+        :param required: If True, exit if key missing or None.
+        :return: Value from app config, or default.
         """
         return self.get("Apps", app_name, *keys, default=default, required=required)
 
     def get_from_app_meta(
-        self, app_name: str, *keys: str, default: Any = None, required: bool = False
+        self,
+        app_name: str,
+        *keys: str,
+        default: Any = None,
+        required: bool = False,
     ) -> Any:
-        """
-        Reads a value from the application's meta configuration using a variable number of keys.
+        """Get a value from an app's metadata.
+
+        :param app_name: Name of the app.
+        :param keys: Variable number of keys in app meta.
+        :param default: Default value if not found.
+        :param required: If True, exit if key missing or None.
+
+        :return: Value from app metadata, or default.
         """
         return self.get(
             "Apps", app_name, "meta", *keys, default=default, required=required
         )
 
     def get_from_app_config(
-        self, app_name: str, *keys: str, default: Any = None, required: bool = False
+        self,
+        app_name: str,
+        *keys: str,
+        default: Any = None,
+        required: bool = False,
     ) -> Any:
-        """
-        Reads a value from the application's config using a variable number of keys.
+        """Get a value from an app's config section.
+
+        :param app_name: Name of the app.
+        :param keys: Variable number of keys in app config.
+        :param default: Default value if not found.
+        :param required: If True, exit if key missing or None.
+
+        :return: Value from app config section, or default.
         """
         return self.get(
             "Apps", app_name, "config", *keys, default=default, required=required
         )
 
     def set(self, *keys: str, value: Any) -> bool:
-        """
-        Sets a value in the configuration dictionary using a variable number of keys.
+        """Set a configuration value using nested key path.
+
+        :param keys: Variable number of keys to navigate hierarchy.
+        :param value: The value to set.
+
+        :return: True if set succeeded, False otherwise.
         """
         if not keys:
             logger.error("No keys provided to set a value.")
@@ -225,69 +284,69 @@ class Configuration:
                 current = current[key]
 
             current[keys[-1]] = value
-            logger.info(f"Set value at: {' -> '.join(keys)} to {value}")
+            key_path = " -> ".join(keys)
+            logger.info(f"Set value at: {key_path} to {value}")
             return True
         except Exception as e:
-            logger.error(f"Failed to set value at {' -> '.join(keys)}: {e}")
+            key_path = " -> ".join(keys)
+            logger.error(f"Failed to set value at {key_path}: {e}")
             return False
 
     def get_generation_filenames(self) -> list[str]:
+        """Get all YAML generation filenames from the generations folder.
+
+        :return: List of filenames (both working and broken).
         """
-        Retrieves all generation filenames from the generations folder.
-        """
-        try:
-            return [
-                f for f in os.listdir(PathTo.GENERATIONS_FOLDER) if f.endswith(".yaml")
-            ]
-        except FileNotFoundError:
-            logger.error(f"Generations folder not found: {PathTo.GENERATIONS_FOLDER}")
-            return []
+        return get_all_generation_filenames(PathTo.GENERATIONS_FOLDER)
 
     def get_latest_generation_id(self) -> int:
+        """Get the latest generation ID (working or broken).
+
+        :return: Latest generation ID, or 0 if no generations exist.
         """
-        Retrieves the latest generation ID from all the generations available in the generations folder.
-        """
-        generation_files = self.get_generation_filenames()
-        if not generation_files:
+        filenames = self.get_generation_filenames()
+        if not filenames:
             return 0
 
         latest_id = 0
-        for file in generation_files:
+        for filename in filenames:
             try:
-                generation_id = int(file.split("_")[1].split(".")[0])
+                generation_id = extract_generation_id(filename)
                 if generation_id > latest_id:
                     latest_id = generation_id
             except (ValueError, IndexError):
-                logger.error(f"Invalid generation file name: {file}")
+                logger.error(f"Invalid generation file name: {filename}")
 
         logger.debug(f"Latest generation ID found: {latest_id}")
         return latest_id
 
     def get_latest_working_generation_id(self) -> int:
+        """Get the latest working (non-broken) generation ID.
+
+        :return: Latest working generation ID, or 0 if none exist.
         """
-        Retrieves the latest working generation ID from all the generations available in the generations folder.
-        """
-        generation_files = self.get_generation_filenames()
-        if not generation_files:
+        filenames = self.get_generation_filenames()
+        if not filenames:
             return 0
 
         latest_id = 0
-        for file in generation_files:
+        for filename in filenames:
             try:
-                if file.endswith(".broken.yaml"):
+                if filename.endswith(".broken.yaml"):
                     continue
-                generation_id = int(file.split("_")[1].split(".")[0])
+                generation_id = extract_generation_id(filename)
                 if generation_id > latest_id:
                     latest_id = generation_id
             except (ValueError, IndexError):
-                logger.error(f"Invalid generation file name: {file}")
+                logger.error(f"Invalid generation file name: {filename}")
 
         logger.debug(f"Latest working generation ID found: {latest_id}")
         return latest_id
 
     def get_latest_working_generation_filepath(self) -> str:
-        """
-        Retrieves the filepath of the latest working generation.
+        """Get the filepath of the latest working generation.
+
+        :return: Full path to latest working generation, or empty string if none exist.
         """
         latest_id = self.get_latest_working_generation_id()
         if latest_id == 0:
@@ -296,70 +355,211 @@ class Configuration:
         return os.path.join(PathTo.GENERATIONS_FOLDER, f"generation_{latest_id}.yaml")
 
     def flag_current_generation_as_broken(self, reason: str) -> None:
-        """
-        Flags the current generation as broken and saves the reason.
+        """Mark the current generation as broken and save the reason.
+
+        :param reason: Description of why the generation is broken.
         """
         try:
+            if not self.file_path:
+                logger.error("No configuration file path set to flag as broken.")
+                return
+
             self.set("Metadata", "is_broken", value=True)
             self.set("Metadata", "broken_reason", value=reason)
 
             original_path = self.file_path
             broken_path = original_path.replace(".yaml", ".broken.yaml")
+
             if self.latest_generation_id == 1:
                 os.remove(original_path)
                 logger.debug(
-                    "Deleting first generation, will be rebuilt from template in the next boot."
+                    "Deleted first generation, will rebuild from template on next boot."
                 )
                 return
+
             if not self.save(self.configuration_dictionary, is_broken=True):
                 logger.error(f"Failed to save broken configuration to {broken_path}")
-            logger.info(
-                f"Current generation flagged as broken and saved to {broken_path}"
-            )
+                return
+
+            if os.path.exists(original_path):
+                os.remove(original_path)
+
+            logger.info(f"Generation {self.latest_generation_id} marked as broken.")
 
         except Exception as e:
             logger.error(f"Failed to flag generation as broken: {e}")
 
     def critical_exit(self, reason: str) -> None:
-        """
-        Handles critical errors by logging the reason, flagging the current generation as broken,
-        and exiting the program.
+        """Log critical error, mark generation as broken, and exit.
+
+        :param reason: Description of the critical error.
         """
         self.flag_current_generation_as_broken(reason)
         logger.critical(f"Critical error occurred: {reason}")
         logger.critical("Exiting program.")
         sys.exit(1)
 
+    def _ensure_metadata(self, config: Dict[str, Any]) -> bool:
+        """Ensure config has valid metadata section with required fields.
 
-def get_version_from_pyproject() -> str:
-    """
-    Reads the version from the pyproject.toml file.
-    """
-    with open(PathTo.PYPROJECT_FILE, "rb") as f:
-        data = tomllib.load(f)
-    version = data.get("project", {}).get("version", "unknown")
-    return version
+        :param config: Configuration dictionary to validate and fix.
+        :return: True if metadata is now valid, False if not a dict.
+        """
+        return ensure_metadata_defaults(config)
 
+    def _validate_config(self, config: Dict[str, Any]) -> Tuple[bool, str]:
+        """Validate that config has required structure.
 
-def get_addresses() -> tuple[str, str]:
-    """
-    Retrieves the local IP address of the machine and the hostname.
-    """
-    s = None
-    try:
-        hostname = socket.gethostname()
-        local_hostname = f"{hostname}.local"
-        dummy_target = "10.255.255.255"
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect((dummy_target, 1))
-        local_ip = s.getsockname()[0]
-        return local_hostname, local_ip
-    except Exception as e:
-        logger.warning(f"Failed to retrieve hostname or public IP: {e}")
-        return "unknown", "unknown"
-    finally:
-        if s:
-            s.close()
+        :param config: Configuration dictionary to validate.
 
+        :return: Tuple of (is_valid, error_reason).
+        """
+        return validate_config_structure(config)
 
-# TODO: Add functions to validate configuration values and structure, and to handle configuration migrations when the structure changes in future versions.
+    def _load_yaml(self, path: str) -> Optional[Dict[str, Any]]:
+        """Load and parse a YAML configuration file.
+
+        :param path: File path to load.
+
+        :return: Parsed config dict, or None if parsing failed.
+        """
+        return load_yaml_file(path)
+
+    def _load_latest_working_config(self) -> bool:
+        """Load the latest valid configuration from disk.
+
+        Tries working generations in descending order until one passes
+        validation. Marks invalid ones as broken.
+
+        :return: True if a valid config was loaded, False otherwise.
+        """
+        candidates = self._get_sorted_working_paths()
+
+        for path in candidates:
+            config_data = self._load_yaml(path)
+            if config_data is None:
+                self._mark_generation_broken(path, "Failed to parse YAML")
+                continue
+
+            is_valid, error_reason = self._validate_config(config_data)
+            if not is_valid:
+                self._mark_generation_broken(path, error_reason, config_data)
+                continue
+
+            self.configuration_dictionary = config_data
+            self.file_path = path
+            self.latest_generation_id = self.get_latest_generation_id()
+            self.latest_working_generation_id = self._extract_id_from_path(path)
+            logger.info(f"Successfully loaded configuration: {path}")
+            return True
+
+        logger.error("No valid working configuration found.")
+        return False
+
+    def _mark_generation_broken(
+        self,
+        path: str,
+        reason: str,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Mark a generation file as broken and save it with reason.
+
+        :param path: Path to the generation file.
+        :param reason: Reason why it's being marked broken.
+        :param config: Config dict (for detailed broken file), or None for simple rename.
+        """
+        broken_path = path.replace(".yaml", ".broken.yaml")
+
+        try:
+            if config is not None:
+                config = deepcopy(config)
+                self._ensure_metadata(config)
+                config["Metadata"]["is_broken"] = True
+                config["Metadata"]["broken_reason"] = reason
+                self.save(config, is_broken=True)
+                if os.path.exists(path):
+                    os.remove(path)
+            else:
+                if os.path.exists(path):
+                    os.replace(path, broken_path)
+
+            logger.warning(f"Marked configuration as broken: {broken_path}")
+
+        except OSError as e:
+            logger.error(f"Failed to mark configuration as broken: {e}")
+
+    def _get_sorted_working_paths(self) -> list[str]:
+        """Get working generation paths sorted in descending order by ID.
+
+        :return: List of paths to working (non-broken) generations, newest first.
+        """
+        return get_sorted_working_generation_paths()
+
+    def _extract_id_from_path(self, path: str) -> int:
+        """Extract generation ID from a file path.
+
+        :param path: Path to generation file.
+
+        :return: Generation ID, or 0 if path format is invalid.
+        """
+        filename = os.path.basename(path)
+        return extract_generation_id(filename)
+
+    def _cleanup_generations(self) -> None:
+        """Apply retention policy and delete old generation files.
+
+        Keeps the specified number of working and broken generations,
+        plus any within the age limit. Cleans up the rest.
+        """
+        try:
+            filenames = self.get_generation_filenames()
+            if not filenames:
+                return
+
+            now = datetime.now()
+            working: list[Tuple[int, str]] = []
+            broken: list[Tuple[int, str]] = []
+
+            for filename in filenames:
+                if not filename.startswith("generation_"):
+                    continue
+
+                path = os.path.join(PathTo.GENERATIONS_FOLDER, filename)
+                generation_id = self._extract_id_from_path(path)
+
+                if generation_id <= 0:
+                    continue
+
+                if filename.endswith(".broken.yaml"):
+                    broken.append((generation_id, path))
+                else:
+                    working.append((generation_id, path))
+
+            working.sort(key=lambda item: item[0], reverse=True)
+            broken.sort(key=lambda item: item[0], reverse=True)
+
+            keep_working = {
+                path for _, path in working[: self.keep_working_generations]
+            }
+            keep_broken = {path for _, path in broken[: self.keep_broken_generations]}
+
+            max_age = timedelta(days=self.max_generation_age_days)
+            for _, path in working + broken:
+                if path in keep_working or path in keep_broken:
+                    continue
+
+                try:
+                    mtime = datetime.fromtimestamp(os.path.getmtime(path))
+                    if now - mtime <= max_age:
+                        continue
+                except OSError:
+                    pass
+
+                try:
+                    os.remove(path)
+                    logger.debug(f"Deleted old configuration generation: {path}")
+                except OSError as e:
+                    logger.warning(f"Failed to delete old generation {path}: {e}")
+
+        except Exception as e:
+            logger.warning(f"Generation cleanup failed: {e}")

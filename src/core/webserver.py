@@ -18,6 +18,7 @@ class WebServer:
         """Initialize the web server"""
         self.is_connected = False
         self.lock = threading.Lock()
+        self.config_manager = Configuration()
         self.app = Flask(
             __name__,
             template_folder=PathTo.TEMPLATES_FOLDER,
@@ -57,8 +58,8 @@ class WebServer:
 
     def save_config(self, config: Dict[str, Any]) -> None:
         """Save configuration to a temporary file"""
-        config["Metadata"]["id"] += 1
-        Configuration.save(config)
+        if not self.config_manager.create_new_config_generation(config):
+            logger.error("Failed to save configuration update as new generation.")
 
     def index(self):
         """Welcome page with warnings"""
@@ -68,7 +69,7 @@ class WebServer:
 
     def homepage(self):
         """Main page showing configuration categories"""
-        config = Configuration.configuration_dictionary
+        config = self.config_manager.configuration_dictionary
 
         # Split configuration into three main categories
         apps = config.get("Apps", {})
@@ -79,7 +80,7 @@ class WebServer:
 
     def edit_section(self, section_name, subsection=None):
         """Edit a specific section/subsection of the configuration"""
-        config = Configuration.configuration_dictionary
+        config = self.config_manager.configuration_dictionary
 
         if section_name in config:
             if subsection and subsection in config[section_name]:
@@ -102,7 +103,7 @@ class WebServer:
 
     def update_config(self):
         """Update the configuration with form data"""
-        config = Configuration.configuration_dictionary
+        config = self.config_manager.configuration_dictionary
         data = request.form.to_dict()
 
         section = data.get("section")
