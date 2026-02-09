@@ -90,7 +90,6 @@ class CustomFrames:
             )
             return cls.black()
 
-        error_title = f"[{cls.__name__}]"
         error_status_description = {
             ServiceStatus.DISABLED: "The app is disabled.",
             ServiceStatus.ERROR_NO_INTERNET: "No Internet connection.",
@@ -106,22 +105,37 @@ class CustomFrames:
         )
         frame = cls.black()
         draw = ImageDraw.Draw(frame)
-        draw.text((5, 5), error_title, fill=RED, font=cls.font)
-        draw.text((5, 15), error_description, fill=RED, font=cls.font)
 
-        # Get text dimensions using textbbox (Pillow 8.0.0+)
-        bbox = draw.textbbox((0, 0), error_description, font=cls.font)
-        text_width = bbox[2] - bbox[0]
+        lines = []
+        words = error_description.split()
+        current_line = ""
 
-        draw.text(
-            (
-                cls.led_cols // 2 - text_width // 2,
-                cls.led_rows // 2,
-            ),
-            error_description,
-            fill=RED,
-            font=cls.font,
-        )
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            bbox = draw.textbbox((0, 0), test_line, font=cls.font)
+            text_width = bbox[2] - bbox[0]
+
+            if text_width <= cls.led_cols - 4:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        line_height = 6
+        total_height = len(lines) * line_height
+        start_y = max(2, (cls.led_rows - total_height) // 2)
+
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=cls.font)
+            text_width = bbox[2] - bbox[0]
+            x = (cls.led_cols - text_width) // 2
+            y = start_y + i * line_height
+            draw.text((x, y), line, fill=RED, font=cls.font)
+
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
         return frame
 
