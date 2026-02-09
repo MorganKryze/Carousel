@@ -8,24 +8,27 @@ from typing import Any, Dict, List
 import websocket
 from loguru import logger
 
-from core.config import Configuration
+from core.webserver import WebServer
 from enums.service_status import ServiceStatus
 from models.module import Module
-from core.webserver import WebServer
 
 
 class Notifications(Module):
     def __init__(self):
         super().__init__()
-        self.app_white_list: Dict[str, str] = Configuration.get_from_module(
-            self.__class__.__name__, "app_white_list"
+        if not self.enabled:
+            logger.info("Module is disabled")
+            return
+
+        self.app_white_list: Dict[str, str] = self.context.config.get_from_module(
+            self.__class__.__name__, "config", "app_white_list", default={}
         )
         if len(self.app_white_list) == 0:
             logger.warning(
                 "No applications found in the white list, no notifications will be received."
             )
-        self.websocket_url: str = Configuration.get_from_module(
-            self.__class__.__name__, "websocket_url"
+        self.websocket_url: str = self.context.config.get_from_module(
+            self.__class__.__name__, "config", "websocket_url"
         )
         if not self.websocket_url:
             logger.error(
@@ -35,8 +38,8 @@ class Notifications(Module):
         self.notifications_list: List[Notification] = []
         self.notification_queue: Queue = Queue()
 
-        self.retry_delay_on_error: int = Configuration.get_from_module(
-            self.__class__.__name__, "retry_delay_on_error"
+        self.retry_delay_on_error: int = self.context.config.get_from_module(
+            self.__class__.__name__, "config", "retry_delay_on_error"
         )
         if not self.retry_delay_on_error or self.retry_delay_on_error <= 0:
             logger.error(

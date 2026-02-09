@@ -8,7 +8,6 @@ from pyowm.owm import OWM
 from pyowm.weatherapi25.weather_manager import WeatherManager
 
 from core.config import Configuration
-from enums.variable_importance import Importance
 
 # Constants
 UPDATE_INTERVAL_SECONDS = 600
@@ -19,9 +18,8 @@ class WeatherModule:
         """
         Initialize the WeatherModule with the given configuration.
         """
-        self.enabled: bool = Configuration.read_variable(
-            "Modules", "Weather", "enabled", Importance.REQUIRED
-        )
+        config = Configuration()
+        self.enabled: bool = config.get_from_module("Weather", "enabled", required=True)
         if not self.enabled:
             logger.info("Disabled")
             return
@@ -30,17 +28,15 @@ class WeatherModule:
         self.current_weather: Optional[Dict[str, Any]] = None
         self.weather_queue: LifoQueue = LifoQueue()
 
-        token: str = Configuration.read_variable(
-            "Modules", "Weather", "token", Importance.REQUIRED
+        token: str = config.get_from_module("Weather", "config", "token", required=True)
+        latitude: float = config.get_from_module(
+            "Weather", "config", "latitude", required=True
         )
-        latitude: float = Configuration.read_variable(
-            "Modules", "Weather", "latitude", Importance.REQUIRED
+        longitude: float = config.get_from_module(
+            "Weather", "config", "longitude", required=True
         )
-        longitude: float = Configuration.read_variable(
-            "Modules", "Weather", "longitude", Importance.REQUIRED
-        )
-        self.temperature_unit: str = Configuration.read_variable(
-            "Modules", "Weather", "temperature_unit", Importance.REQUIRED
+        self.temperature_unit: str = config.get_from_module(
+            "Weather", "config", "temperature_unit", required=True
         )
         if self.temperature_unit not in ["celsius", "fahrenheit"]:
             logger.error(

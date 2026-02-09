@@ -8,7 +8,9 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml
 from loguru import logger
+from pydantic import ValidationError
 
+from core.config_schema import ConfigRoot
 from utils.path import PathTo
 
 
@@ -75,8 +77,20 @@ def ensure_metadata_defaults(config: Dict[str, Any]) -> bool:
     return isinstance(metadata.get("id"), int)
 
 
+def _format_pydantic_errors(error: ValidationError, limit: int = 3) -> str:
+    """Format pydantic errors into a short, readable summary."""
+    items = []
+    for entry in error.errors()[:limit]:
+        location = ".".join(str(part) for part in entry.get("loc", []))
+        message = entry.get("msg", "Invalid value")
+        items.append(f"{location}: {message}")
+    if len(error.errors()) > limit:
+        items.append("...")
+    return "; ".join(items)
+
+
 def validate_config_structure(config: Dict[str, Any]) -> Tuple[bool, str]:
-    """Validate that config has required structure.
+    """Validate that config matches the schema.
 
     :param config: Configuration dictionary to validate.
     :return: Tuple of (is_valid, error_reason).
@@ -87,12 +101,11 @@ def validate_config_structure(config: Dict[str, Any]) -> Tuple[bool, str]:
     if not ensure_metadata_defaults(config):
         return False, "Metadata section is missing or invalid."
 
-    required_sections = ("System", "Modules", "Apps")
-    for section in required_sections:
-        if section not in config or not isinstance(config.get(section), dict):
-            return False, f"Missing or invalid '{section}' section."
-
-    return True, ""
+    try:
+        ConfigRoot.model_validate(config)
+        return True, ""
+    except ValidationError as error:
+        return False, _format_pydantic_errors(error)
 
 
 def load_yaml_file(path: str) -> Optional[Dict[str, Any]]:

@@ -50,24 +50,33 @@ System:
 
 Modules:
   Notifications:
-    name: Notifications
-    description: Provides notification services to applications.
-    app_white_list:
-    websocket_url:
-    retry_delay_on_error: 1000
+    enabled: false
+    meta:
+      name: Notifications
+      description: Provides notification services to applications.
+    config:
+      app_white_list:
+      websocket_url:
+      retry_delay_on_error: 1000
   Weather:
-    name: Weather
-    description: Provides weather information to applications.
-    token:
-    latitude:
-    longitude:
-    temperature_unit: celcius
+    enabled: false
+    meta:
+      name: Weather
+      description: Provides weather information to applications.
+    config:
+      token:
+      latitude:
+      longitude:
+      temperature_unit: celcius
   Spotify:
-    name: Spotify
-    description: Provides Spotify integration to applications.
-    client_id:
-    client_secret:
-    redirect_uri:
+    enabled: false
+    meta:
+      name: Spotify
+      description: Provides Spotify integration to applications.
+    config:
+      client_id:
+      client_secret:
+      redirect_uri:
 
 # -------------------- Apps Configuration ------------------
 # Apps are the applications that are available to the user. Disabled apps will not be
