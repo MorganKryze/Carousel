@@ -186,7 +186,8 @@ def get_sorted_working_generation_paths(
     try:
         filenames = os.listdir(generations_folder)
     except FileNotFoundError:
-        logger.error(f"Generations folder not found: {generations_folder}")
+        logger.warning(f"Generations folder not found: {generations_folder}, creating it.")
+        os.makedirs(generations_folder, exist_ok=True)
         return []
 
     working_files = [
@@ -214,5 +215,6 @@ def get_all_generation_filenames(generations_folder: str) -> list[str]:
             if filename.endswith(".yaml")
         ]
     except FileNotFoundError:
-        logger.error(f"Generations folder not found: {generations_folder}")
+        logger.warning(f"Generations folder not found: {generations_folder}, creating it.")
+        os.makedirs(generations_folder, exist_ok=True)
         return []
