@@ -101,6 +101,17 @@ class GPIOInputController(InputController):
             )
             raise ValueError("Encoder long_press_window must be non-negative")
 
+        reverse_rotation = config.get(
+            "System", "Encoder", "reverse_rotation", default=False
+        )
+        if not isinstance(reverse_rotation, bool):
+            logger.error(
+                f"Invalid reverse_rotation: {reverse_rotation}. Must be a boolean."
+            )
+            raise ValueError("Encoder reverse_rotation must be a boolean")
+
+        self.encoder_direction_multiplier = -1 if reverse_rotation else 1
+
         self.encoder = RotaryEncoder(
             encoder_gpio_clk,
             encoder_gpio_dt,
@@ -149,8 +160,9 @@ class GPIOInputController(InputController):
     def _on_encoder_clockwise(self) -> None:
         """Handle encoder clockwise rotation."""
         if self.on_encoder_change_callback and self.event_loop:
+            direction = 1 * self.encoder_direction_multiplier
             asyncio.run_coroutine_threadsafe(
-                self.on_encoder_change_callback(1), self.event_loop
+                self.on_encoder_change_callback(direction), self.event_loop
             )
             self.encoder.value = self.ENCODER_VALUE_RESET
             logger.debug("Encoder: CW")
@@ -158,8 +170,9 @@ class GPIOInputController(InputController):
     def _on_encoder_counter_clockwise(self) -> None:
         """Handle encoder counter-clockwise rotation."""
         if self.on_encoder_change_callback and self.event_loop:
+            direction = -1 * self.encoder_direction_multiplier
             asyncio.run_coroutine_threadsafe(
-                self.on_encoder_change_callback(-1), self.event_loop
+                self.on_encoder_change_callback(direction), self.event_loop
             )
             self.encoder.value = self.ENCODER_VALUE_RESET
             logger.debug("Encoder: CCW")
