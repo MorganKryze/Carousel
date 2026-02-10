@@ -3,7 +3,6 @@ import asyncio
 
 from loguru import logger
 
-from core.config import Configuration
 from core.game_loop import GameLoop
 from display.animations import Animations
 from utils.logs import start_logger
@@ -64,10 +63,6 @@ def main() -> None:
 
     log_level = "DEBUG" if args.debug else "WARNING"
     start_logger(file_level="DEBUG", console_level=log_level)
-
-    # TODO: by default config should load the last working config, but in case of a failure, for the fallback it might be interesting to be able to reload a config from a specific id
-    config = Configuration()
-    config.load()
 
     try:
         asyncio.run(async_main(use_emulator=args.emulator))

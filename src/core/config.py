@@ -35,6 +35,7 @@ class Configuration:
         if cls._instance is None:
             cls._instance = super(Configuration, cls).__new__(cls)
             cls._instance._initialize()
+            cls._instance._load()
         return cls._instance
 
     def _initialize(self) -> None:
@@ -48,7 +49,7 @@ class Configuration:
         self.keep_broken_generations: int = 5
         self.max_generation_age_days: int = 30
 
-    def load(self) -> None:
+    def _load(self) -> None:
         """Load configuration from disk.
 
         Attempts to load the latest working generation. If none exists,
@@ -390,14 +391,58 @@ class Configuration:
             logger.error(f"Failed to flag generation as broken: {e}")
 
     def critical_exit(self, reason: str) -> None:
-        """Log critical error, mark generation as broken, and exit.
+        """Log critical error, mark generation as broken, and restart.
 
         :param reason: Description of the critical error.
         """
-        self.flag_current_generation_as_broken(reason)
         logger.critical(f"Critical error occurred: {reason}")
-        logger.critical("Exiting program.")
-        sys.exit(1)
+        logger.warning("Marking generation as broken.")
+        self.flag_current_generation_as_broken(reason)
+        self.restart()
+
+    def restart(self) -> None:
+        """Restart the program by replacing the current process.
+
+        IMPORTANT: Hardware resources (GPIO pins, SPI/I2C buses, display) must be
+        explicitly released before restart, especially on Raspberry Pi. Without cleanup,
+        the restarted process cannot claim these kernel-level resources.
+
+        Note: This will trigger multiprocessing resource_tracker warnings about leaked
+        semaphores. These warnings are cosmetic and can be safely ignored - the OS
+        cleans up semaphores when the process exits, but hardware resources (GPIO)
+        require explicit cleanup to prevent access failures on restart.
+        """
+        try:
+            from core.game_loop import GameLoop
+
+            logger.warning(
+                "Restarting application. Releasing hardware resources first."
+            )
+
+            if GameLoop.is_initialized():
+                logger.info("Releasing GPIO, display, and input hardware...")
+                try:
+                    GameLoop().cleanup()
+                    logger.info("Hardware cleanup completed successfully.")
+                except Exception as cleanup_error:
+                    logger.error(
+                        f"Error during hardware cleanup: {cleanup_error}", exc_info=True
+                    )
+                    logger.warning("Proceeding with restart despite cleanup errors.")
+
+            logger.warning(
+                "NOTE: A multiprocessing resource_tracker warning may appear below. "
+                "This is EXPECTED and can be safely IGNORED. It's a cosmetic warning "
+                "from the RGB matrix library - the OS cleans up these resources automatically."
+            )
+            logger.info(f"Executing: {sys.executable} with args: {sys.argv}")
+            logger.complete()
+
+            os.execv(sys.executable, [sys.executable, *sys.argv])
+        except Exception as e:
+            logger.critical(f"Failed to restart process: {e}", exc_info=True)
+            logger.complete()
+            sys.exit(1)
 
     def _ensure_metadata(self, config: Dict[str, Any]) -> bool:
         """Ensure config has valid metadata section with required fields.

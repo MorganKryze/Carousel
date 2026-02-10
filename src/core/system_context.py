@@ -65,4 +65,3 @@ class SystemContext:
     def is_initialized(cls) -> bool:
         """Check if context has been initialized."""
         return cls._initialized
-

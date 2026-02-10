@@ -119,19 +119,40 @@ class GameLoop:
         state.encoder_rotation_this_frame = 0
 
     def cleanup(self) -> None:
-        """Release all hardware resources."""
+        """Release all hardware resources.
+
+        Critical for Raspberry Pi: Ensures GPIO pins, SPI/I2C buses, and display
+        hardware are properly released. This is essential before restart, as the
+        new process cannot claim resources still held by the old process.
+        """
         logger.info("Cleaning up resources...")
 
         if SystemContext.is_initialized():
             if self.context.display:
-                self.context.display.matrix.SetImage(CustomFrames.black())
-                self.context.display.cleanup()
+                try:
+                    logger.debug("Clearing display to black...")
+                    self.context.display.matrix.SetImage(CustomFrames.black())
+                except Exception as e:
+                    logger.warning(f"Failed to clear display: {e}")
+
+                try:
+                    logger.debug("Releasing display controller (SPI/GPIO)...")
+                    self.context.display.cleanup()
+                except Exception as e:
+                    logger.error(f"Failed to cleanup display controller: {e}")
 
             if self.context.input_controller:
-                self.context.input_controller.cleanup()
+                try:
+                    logger.debug("Releasing input controller (GPIO pins)...")
+                    self.context.input_controller.cleanup()
+                except Exception as e:
+                    logger.error(f"Failed to cleanup input controller: {e}")
 
             if self.context.state:
-                self.context.state.encoder_rotation_this_frame = 0
-                self.context.state.encoder_queue.queue.clear()
-
+                try:
+                    logger.debug("Clearing system state and queues...")
+                    self.context.state.encoder_rotation_this_frame = 0
+                    self.context.state.encoder_queue.queue.clear()
+                except Exception as e:
+                    logger.warning(f"Failed to clear state: {e}")
         logger.info("Cleanup complete.")
