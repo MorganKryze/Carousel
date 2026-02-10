@@ -16,7 +16,7 @@ class KeyboardInputController(InputController):
     LONG_PRESS_THRESHOLD = 0.5  # Hold for 0.5s = long press
     DOUBLE_PRESS_WINDOW = 0.3  # Second press within 0.3s = double press
 
-    def __init__(self, reverse_rotation: bool = False):
+    def __init__(self, natural_rotation: bool = False):
         super().__init__()
         logger.info("Initializing keyboard input controller...")
 
@@ -33,12 +33,12 @@ class KeyboardInputController(InputController):
         self.last_press_time: Optional[float] = None
         self.pending_press_task: Optional[asyncio.Task] = None
 
-        if not isinstance(reverse_rotation, bool):
+        if not isinstance(natural_rotation, bool):
             logger.error(
-                f"Invalid reverse_rotation: {reverse_rotation}. Must be a boolean."
+                f"Invalid natural_rotation: {natural_rotation}. Must be a boolean."
             )
-            raise ValueError("Encoder reverse_rotation must be a boolean")
-        self.encoder_direction_multiplier = -1 if reverse_rotation else 1
+            raise ValueError("Encoder natural_rotation must be a boolean")
+        self.encoder_direction_multiplier = 1 if natural_rotation else -1
 
         self.listener = keyboard.Listener(
             on_press=self._on_key_press,

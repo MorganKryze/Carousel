@@ -51,7 +51,7 @@ class EncoderConfig(BaseModel):
     bounce_time: float
     double_press_window: float
     long_press_window: float
-    reverse_rotation: bool
+    natural_rotation: bool
 
 
 class SystemConfig(BaseModel):

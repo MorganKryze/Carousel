@@ -43,7 +43,7 @@ System:
     bounce_time: 0.05
     double_press_window: 0.3
     long_press_window: 0.5
-    reverse_rotation: true
+    natural_rotation: true
 
 # ------------------ Module Configuration ------------------
 # Modules are the toolboxes used by applications. Disabled modules will result in the

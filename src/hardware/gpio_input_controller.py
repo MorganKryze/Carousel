@@ -101,16 +101,16 @@ class GPIOInputController(InputController):
             )
             raise ValueError("Encoder long_press_window must be non-negative")
 
-        reverse_rotation = config.get(
-            "System", "Encoder", "reverse_rotation", default=False
+        natural_rotation = config.get(
+            "System", "Encoder", "natural_rotation", default=False
         )
-        if not isinstance(reverse_rotation, bool):
+        if not isinstance(natural_rotation, bool):
             logger.error(
-                f"Invalid reverse_rotation: {reverse_rotation}. Must be a boolean."
+                f"Invalid natural_rotation: {natural_rotation}. Must be a boolean."
             )
-            raise ValueError("Encoder reverse_rotation must be a boolean")
+            raise ValueError("Encoder natural_rotation must be a boolean")
 
-        self.encoder_direction_multiplier = -1 if reverse_rotation else 1
+        self.encoder_direction_multiplier = -1 if natural_rotation else 1
 
         self.encoder = RotaryEncoder(
             encoder_gpio_clk,
