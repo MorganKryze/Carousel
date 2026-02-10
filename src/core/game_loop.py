@@ -17,14 +17,24 @@ class GameLoop:
     Main game loop coordinating singleton components.
     """
 
-    def __init__(self, target_fps: int = 24, use_emulator: bool = False):
+    _instance: "GameLoop" = None
+
+    def __new__(cls, target_fps: int = 24, use_emulator: bool = False) -> "GameLoop":
+        """Ensure only one instance exists."""
+        if cls._instance is None:
+            cls._instance = super(GameLoop, cls).__new__(cls)
+            cls._instance._initialize(target_fps, use_emulator)
+        return cls._instance
+
+    def _initialize(self, target_fps: int = 24, use_emulator: bool = False) -> None:
+        """Initialize game loop state on creation."""
         self.target_fps = target_fps
         self.time_per_frame = 1.0 / target_fps
         self.last_frame_time = time.time()
         self.running = True
 
         self.context = SystemContext(use_emulator=use_emulator)
-        
+
         event_loop = asyncio.get_running_loop()
         self.context.input_controller.set_event_loop(event_loop)
 
@@ -35,6 +45,11 @@ class GameLoop:
         self.previous_frame_bytes = self.previous_frame.tobytes()
 
         logger.info("Game loop initialized successfully.")
+
+    @classmethod
+    def is_initialized(cls) -> bool:
+        """Check if GameLoop singleton has been initialized."""
+        return cls._instance is not None
 
     def setup_signal_handlers(self, render_task: asyncio.Task) -> None:
         """Register signal handlers for graceful shutdown."""
