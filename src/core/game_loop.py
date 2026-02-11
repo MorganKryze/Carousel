@@ -19,21 +19,21 @@ class GameLoop:
 
     _instance: "GameLoop" = None
 
-    def __new__(cls, target_fps: int = 24, use_emulator: bool = False) -> "GameLoop":
+    def __new__(cls, use_emulator: bool = False) -> "GameLoop":
         """Ensure only one instance exists."""
         if cls._instance is None:
             cls._instance = super(GameLoop, cls).__new__(cls)
-            cls._instance._initialize(target_fps, use_emulator)
+            cls._instance._initialize(use_emulator)
         return cls._instance
 
-    def _initialize(self, target_fps: int = 24, use_emulator: bool = False) -> None:
+    def _initialize(self, use_emulator: bool = False) -> None:
         """Initialize game loop state on creation."""
-        self.target_fps = target_fps
-        self.time_per_frame = 1.0 / target_fps
+        self.context = SystemContext(use_emulator=use_emulator)
+
+        self.target_fps = self.context.display.target_fps
+        self.time_per_frame = 1.0 / self.target_fps
         self.last_frame_time = time.time()
         self.running = True
-
-        self.context = SystemContext(use_emulator=use_emulator)
 
         event_loop = asyncio.get_running_loop()
         self.context.input_controller.set_event_loop(event_loop)

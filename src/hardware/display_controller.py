@@ -32,7 +32,7 @@ class DisplayController:
         self.led_cols: int = 0
         self.disable_hardware_pulsing: bool = False
         self.hardware_mapping: str = ""
-        self.refresh_rate: float = 0.0
+        self.target_fps: int = 0
         self.matrix: Any = None
 
         try:
@@ -89,12 +89,12 @@ class DisplayController:
                 f"{', '.join(self.VALID_HARDWARE_MAPPINGS)}."
             )
 
-        self.refresh_rate = self._config.get(
-            "System", "Matrix", "refresh_rate", required=True
+        self.target_fps = self._config.get(
+            "System", "Matrix", "target_fps", required=True
         )
-        if self.refresh_rate <= 0:
+        if self.target_fps <= 0:
             self._config.critical_exit(
-                "System.Matrix.refresh_rate must be a positive number."
+                "System.Matrix.target_fps must be a positive integer."
             )
 
         logger.info("All display settings loaded.")

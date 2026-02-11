@@ -28,7 +28,7 @@ class MatrixConfig(BaseModel):
     brightness: int
     disable_hardware_pulsing: bool
     hardware_mapping: str
-    refresh_rate: float
+    target_fps: int
 
 
 class TiltSwitchConfig(BaseModel):

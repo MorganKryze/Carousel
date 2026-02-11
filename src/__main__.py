@@ -14,7 +14,7 @@ async def async_main(use_emulator: bool = False) -> None:
     Main async entry point.
     Orchestrates initialization, loading animation, and game loop execution.
     """
-    game_loop = GameLoop(target_fps=10, use_emulator=use_emulator)
+    game_loop = GameLoop(use_emulator)
 
     animations = Animations()
 

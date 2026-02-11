@@ -39,28 +39,28 @@ class CustomFrames:
         """
         frame = cls.black()
         draw = ImageDraw.Draw(frame)
-        bar_width = cls.led_cols - 30
-        bar_height = 5
-        bar_x = (cls.led_cols - bar_width) // 2
+
+        text = "Carousel"
+        bbox = draw.textbbox((0, 0), text, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = (cls.led_cols - text_width) // 2
+        text_y = (cls.led_rows - text_height) // 2 - 3
+        draw.text((text_x, text_y), text, fill=WHITE, font=cls.font)
+
+        bar_width = cls.led_cols - 1
+        bar_x = 0
+        bar_y = cls.led_rows - 1
         filled_width = int((percentage / 100) * bar_width)
+
         draw.rectangle(
             (
                 bar_x,
-                cls.led_rows // 2 - bar_height // 2,
+                bar_y,
                 bar_x + filled_width,
-                cls.led_rows // 2 + bar_height // 2,
+                bar_y,
             ),
-            fill=GREEN,
-        )
-        draw.rectangle(
-            (
-                bar_x,
-                cls.led_rows // 2 - bar_height // 2,
-                bar_x + bar_width,
-                cls.led_rows // 2 + bar_height // 2,
-            ),
-            outline=GRAY,
-            width=1,
+            fill=WHITE,
         )
         return frame
 

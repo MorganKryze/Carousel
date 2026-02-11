@@ -1,18 +1,15 @@
 import asyncio
 import time
-from hardware.display_controller import DisplayController
 
 from loguru import logger
 
+from core.system_context import SystemContext
 from display.custom_frames import CustomFrames
 
 
 class Animations:
-    display_controller: DisplayController
-
     def __init__(self) -> None:
-        self.display_controller = DisplayController()
-        self.matrix = self.display_controller.matrix
+        self.context = SystemContext()
 
     async def loading_animation(self, duration_in_seconds: int = 4) -> None:
         """
@@ -25,9 +22,11 @@ class Animations:
             return
         logger.debug("Starting loading animation.")
 
+        target_fps = self.context.display.target_fps
+
         start_time = time.time()
         last_update_time = start_time
-        update_interval = 0.05
+        update_interval = 1.0 / target_fps
 
         while True:
             current_time = time.time()
@@ -44,19 +43,20 @@ class Animations:
                         "CustomFrames.loading() returned None. Ensure CustomFrames.init() was called."
                     )
                     break
-                self.matrix.SetImage(frame)
+                self.context.display.matrix.SetImage(frame)
                 last_update_time = current_time
 
             await asyncio.sleep(0.001)
 
         final_frame = CustomFrames.loading(100)
         if final_frame is not None:
-            self.matrix.SetImage(final_frame)
+            self.context.display.matrix.SetImage(final_frame)
+        await asyncio.sleep(1)
 
         logger.debug("Loading animation completed.")
 
         black_frame = CustomFrames.black()
         if black_frame is not None:
-            self.matrix.SetImage(black_frame)
+            self.context.display.matrix.SetImage(black_frame)
 
         logger.debug("Display cleared after loading animation.")

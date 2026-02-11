@@ -32,7 +32,7 @@ System:
     brightness: 100
     disable_hardware_pulsing: false
     hardware_mapping: regular
-    refresh_rate: 0.05
+    target_fps: 12
   Tilt-switch:
     gpio: 19
     bounce_time: 0.25
