@@ -30,7 +30,6 @@ class AppManager:
         self.modules: Dict[str, Module] = {}
         self.apps: List[Application] = []
         self.enabled_apps: List[Application] = []
-        self.carousel: List[Application] = []
         self._initialized = False
 
     def init_apps(self) -> None:
@@ -52,8 +51,7 @@ class AppManager:
         try:
             self.modules = self._load_modules()
             self.apps = self._load_apps()
-            self.enabled_apps = [app for app in self.apps if app.enabled]
-            self.carousel = self._filter_apps_for_carousel()
+            self.enabled_apps = self._filter_apps_for_carousel()
             self._initialized = True
             logger.debug("All enabled apps initialized.")
         except Exception as e:
@@ -74,7 +72,12 @@ class AppManager:
         }
 
     def _load_apps(self) -> List[Application]:
-        """Load and initialize the apps with dependency injection."""
+        """Load and initialize the apps with dependency injection, in configured order.
+
+        Apps are loaded in the order specified by the 'order' field in the configuration.
+        This provides a clean, declarative way to manage app ordering without relying
+        on hardcoded creation order.
+        """
         callbacks: Dict[str, Callable] = {
             "toggle_display": self.toggle_display,
             "switch_next_app": self.switch_next_app,
@@ -84,17 +87,35 @@ class AppManager:
             "get_app_by_name": self.get_app_by_name,
             "get_module_by_name": self.get_module_by_name,
         }
-        return [
-            main_screen.MainScreen(self.context, callbacks),
-            gif_viewer.GifPlayer(self.context, callbacks),
-            pomodoro.Pomodoro(self.context, callbacks),
-            life.GameOfLife(self.context, callbacks),
-        ]
+
+        app_registry: Dict[str, type] = {
+            "MainScreen": main_screen.MainScreen,
+            "GifPlayer": gif_viewer.GifPlayer,
+            "Pomodoro": pomodoro.Pomodoro,
+            "GameOfLife": life.GameOfLife,
+        }
+
+        app_names_in_order = self.context.config.get_app_names_in_order()
+
+        apps: List[Application] = []
+        for app_name in app_names_in_order:
+            if app_name in app_registry:
+                try:
+                    app_class = app_registry[app_name]
+                    app = app_class(self.context, callbacks)
+                    apps.append(app)
+                    logger.debug(f"Loaded app: {app_name}")
+                except Exception as e:
+                    logger.error(f"Failed to load app '{app_name}': {e}")
+            else:
+                logger.warning(f"App '{app_name}' not found in app registry.")
+
+        return apps
 
     def _filter_apps_for_carousel(self) -> List[Application]:
         """Filter enabled applications for carousel display."""
         return [
-            app for app in self.enabled_apps if app.provides_horizontal_content is True
+            app for app in self.apps if app.enabled is True
         ]
 
     def get_app_by_name(self, app_name: str) -> Optional[Application]:
@@ -115,12 +136,12 @@ class AppManager:
         """Get the current application."""
         if not self._initialized:
             raise RuntimeError("AppManager not initialized. Call init_apps() first.")
-        return self.carousel[self.current_app_index]
+        return self.enabled_apps[self.current_app_index]
 
     def switch_next_app(self) -> bool:
         """Switch to the next application."""
         try:
-            self.current_app_index = (self.current_app_index + 1) % len(self.carousel)
+            self.current_app_index = (self.current_app_index + 1) % len(self.enabled_apps)
             logger.debug("Switched to next app.")
             return True
         except Exception as e:
@@ -131,7 +152,7 @@ class AppManager:
     def switch_prev_app(self) -> bool:
         """Switch to the previous application."""
         try:
-            self.current_app_index = (self.current_app_index - 1) % len(self.carousel)
+            self.current_app_index = (self.current_app_index - 1) % len(self.enabled_apps)
             logger.debug("Switched to previous app.")
             return True
         except Exception as e:

@@ -100,6 +100,7 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
+    order: int
     meta: AppMeta
     config: Optional[Dict[str, Any]] = None
     dependencies: Optional[List[str]] = None

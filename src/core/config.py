@@ -293,6 +293,36 @@ class Configuration:
             logger.error(f"Failed to set value at {key_path}: {e}")
             return False
 
+    def get_app_names_in_order(self) -> list[str]:
+        """Get all app names sorted by their configured order.
+
+        Returns app names sorted by the 'order' field in the configuration.
+        Apps with invalid or missing order values are placed at the end.
+
+        :return: List of app names sorted by order.
+        """
+        apps = self.get("Apps", default={})
+        if not isinstance(apps, dict):
+            logger.warning("Apps configuration is not a dictionary.")
+            return []
+
+        app_list = []
+        for app_name, app_config in apps.items():
+            if isinstance(app_config, dict):
+                order = app_config.get("order", float("inf"))
+                # Ensure order is an integer, default to infinity if not
+                if not isinstance(order, int):
+                    logger.warning(
+                        f"App '{app_name}' has invalid order value: {order}. "
+                        "Placing at the end."
+                    )
+                    order = float("inf")
+                app_list.append((app_name, order))
+
+        # Sort by order, keeping original order for apps with same order value
+        app_list.sort(key=lambda x: x[1])
+        return [app_name for app_name, _ in app_list]
+
     def get_generation_filenames(self) -> list[str]:
         """Get all YAML generation filenames from the generations folder.
 
