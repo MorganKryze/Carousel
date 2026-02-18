@@ -3,7 +3,7 @@
 import os
 import sys
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 
 from loguru import logger
@@ -25,7 +25,7 @@ class Configuration:
     """Singleton configuration manager with generational versioning.
 
     Handles loading, saving, and accessing configuration data with automatic
-    fallback to previous working versions and garbage collection of old files.
+    fallback to previous working versions.
     """
 
     _instance: Optional["Configuration"] = None
@@ -45,17 +45,13 @@ class Configuration:
         self.latest_working_generation_id: int = 0
         self.configuration_dictionary: Dict[str, Any] = {}
 
-        self.keep_working_generations: int = 10
-        self.keep_broken_generations: int = 5
-        self.max_generation_age_days: int = 30
-
     def _load(self) -> None:
         """Load configuration from disk.
 
         Checks for safe mode first. If safe mode trigger exists, loads
         safemode.config.yaml. Otherwise, attempts to load the latest working
         generation. Falls back through older generations if the latest one is
-        invalid. Cleans up old files after loading.
+        invalid.
         """
         logger.info("Loading configuration...")
 
@@ -78,8 +74,6 @@ class Configuration:
             loaded = self._load_latest_working_config()
             if not loaded:
                 self.critical_exit("Failed to load any valid configuration.")
-
-        self._cleanup_generations()
 
     def create_new_configuration_from_template(self) -> None:
         """Create a new generation from the template configuration file.
@@ -773,62 +767,3 @@ class Configuration:
         """
         filename = os.path.basename(path)
         return extract_generation_id(filename)
-
-    def _cleanup_generations(self) -> None:
-        """Apply retention policy and delete old generation files.
-
-        Keeps the specified number of working and broken generations,
-        plus any within the age limit. Cleans up the rest.
-        """
-        try:
-            filenames = self.get_generation_filenames()
-            if not filenames:
-                return
-
-            now = datetime.now()
-            working: list[Tuple[int, str]] = []
-            broken: list[Tuple[int, str]] = []
-
-            for filename in filenames:
-                if not filename.startswith("generation_"):
-                    continue
-
-                path = os.path.join(PathTo.GENERATIONS_FOLDER, filename)
-                generation_id = self._extract_id_from_path(path)
-
-                if generation_id <= 0:
-                    continue
-
-                if filename.endswith(".broken.yaml"):
-                    broken.append((generation_id, path))
-                else:
-                    working.append((generation_id, path))
-
-            working.sort(key=lambda item: item[0], reverse=True)
-            broken.sort(key=lambda item: item[0], reverse=True)
-
-            keep_working = {
-                path for _, path in working[: self.keep_working_generations]
-            }
-            keep_broken = {path for _, path in broken[: self.keep_broken_generations]}
-
-            max_age = timedelta(days=self.max_generation_age_days)
-            for _, path in working + broken:
-                if path in keep_working or path in keep_broken:
-                    continue
-
-                try:
-                    mtime = datetime.fromtimestamp(os.path.getmtime(path))
-                    if now - mtime <= max_age:
-                        continue
-                except OSError:
-                    pass
-
-                try:
-                    os.remove(path)
-                    logger.debug(f"Deleted old configuration generation: {path}")
-                except OSError as e:
-                    logger.warning(f"Failed to delete old generation {path}: {e}")
-
-        except Exception as e:
-            logger.warning(f"Generation cleanup failed: {e}")
