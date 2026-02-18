@@ -12,6 +12,7 @@ WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GRAY = (128, 128, 128)
 GREEN = (0, 255, 0)
+ORANGE = (255, 165, 0)
 
 
 class CustomFrames:
@@ -161,4 +162,42 @@ class CustomFrames:
 
         draw.text((x, y), message, fill=RED, font=cls.font)
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
+        return frame
+
+    @classmethod
+    def safe_mode(cls) -> Image:
+        """
+        Generate a safe mode frame with recovery instructions.
+
+        :return: Safe mode information frame.
+        """
+        frame = cls.black()
+        draw = ImageDraw.Draw(frame)
+
+        title = "SAFE MODE"
+        bbox = draw.textbbox((0, 0), title, font=cls.font)
+        title_width = bbox[2] - bbox[0]
+        title_x = (cls.led_cols - title_width) // 2
+        draw.text((title_x, 2), title, fill=ORANGE, font=cls.font)
+
+        instruction = "Open setup"
+        bbox = draw.textbbox((0, 0), instruction, font=cls.font)
+        instr_width = bbox[2] - bbox[0]
+        instr_height = bbox[3] - bbox[1]
+        instr_x = (cls.led_cols - instr_width) // 2
+        instr_y = (cls.led_rows - instr_height) // 2
+        draw.text((instr_x, instr_y), instruction, fill=WHITE, font=cls.font)
+
+        instruction2 = "website to fix."
+
+        bbox2 = draw.textbbox((0, 0), instruction2, font=cls.font)
+        instr2_width = bbox2[2] - bbox2[0]
+        instr2_x = (cls.led_cols - instr2_width) // 2
+        instr2_y = instr_y + instr_height + 4
+        draw.text((instr2_x, instr2_y), instruction2, fill=WHITE, font=cls.font)
+
+        draw.rectangle(
+            (0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=ORANGE, width=1
+        )
+
         return frame

@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carousel — Safe Mode</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+
+        <!-- ── Header ──────────────────────────────────────────────── -->
+        <div class="safemode-header">
+            <span class="safemode-badge">⚠ SAFE MODE</span>
+            <h1>System entered safe mode</h1>
+            <p class="safemode-subtitle">
+                A critical error was detected. The display has been suspended until
+                the configuration is resolved. Choose a recovery action below.
+            </p>
+        </div>
+
+        <!-- ── Error details ────────────────────────────────────────── -->
+        <div class="safemode-error-panel">
+            <h2>Error details</h2>
+            <dl class="safemode-details">
+                {% if broken_id %}
+                <dt>Broken generation</dt>
+                <dd>#{{ broken_id }}</dd>
+                {% endif %}
+                {% if timestamp %}
+                <dt>Flagged at</dt>
+                <dd>{{ timestamp }}</dd>
+                {% endif %}
+                <dt>Reason</dt>
+                <dd class="safemode-reason">{{ reason }}</dd>
+            </dl>
+        </div>
+
+        <!-- ── Recovery actions ─────────────────────────────────────── -->
+        <div class="safemode-actions">
+            <h2>Recovery options</h2>
+
+            <!-- Option A: Edit the broken config and apply it -->
+            {% if has_broken_config %}
+            <div class="safemode-action-card">
+                <div class="safemode-action-body">
+                    <h3>Option A — Edit &amp; fix the broken config</h3>
+                    <p>
+                        Opens the standard configuration editor preloaded with the
+                        broken generation&nbsp;#{{ broken_id }}. Fix the problematic
+                        values, then click <strong>Apply fixed config</strong> below
+                        to save it as a new working generation.
+                    </p>
+                    <a href="{{ url_for('homepage') }}" class="btn btn-primary">
+                        Open config editor
+                    </a>
+                </div>
+                <div class="safemode-action-footer">
+                    <form action="{{ url_for('safemode_apply') }}" method="POST"
+                          onsubmit="return confirm('Save the current (edited) config as a new working generation and restart?')">
+                        <button type="submit" class="btn btn-success">
+                            Apply fixed config &amp; restart
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Option B: Restore previous working generation OR generate new -->
+            <div class="safemode-action-card">
+                {% if has_previous %}
+                <div class="safemode-action-body">
+                    <h3>Option B — Restore previous working config</h3>
+                    <p>
+                        Discard the broken generation and fall back to the last known
+                        working generation&nbsp;#{{ previous_working_id }}.
+                        The broken config is archived as
+                        <code>generation_{{ broken_id }}.broken.yaml</code>.
+                    </p>
+                </div>
+                <div class="safemode-action-footer">
+                    <form action="{{ url_for('safemode_rollback') }}" method="POST"
+                          onsubmit="return confirm('Restore generation #{{ previous_working_id }} and restart?')">
+                        <button type="submit" class="btn btn-warning">
+                            Restore generation #{{ previous_working_id }} &amp; restart
+                        </button>
+                    </form>
+                </div>
+                {% else %}
+                <div class="safemode-action-body">
+                    <h3>Option B — Generate a fresh config from template</h3>
+                    <p>
+                        No previous working generation exists. Create a brand-new
+                        configuration from the default template. You will need to
+                        re-configure all settings after restart.
+                    </p>
+                </div>
+                <div class="safemode-action-footer">
+                    <form action="{{ url_for('safemode_generate_new') }}" method="POST"
+                          onsubmit="return confirm('Generate a fresh config from template and restart? All existing settings will be lost.')">
+                        <button type="submit" class="btn btn-danger">
+                            Generate from template &amp; restart
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Intercept all POST recovery buttons to show a loading state
+        document.querySelectorAll('.safemode-action-footer form').forEach(function(form) {
+            form.addEventListener('submit', function(e) {
+                var btn = form.querySelector('button[type="submit"]');
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = 'Working…';
+                }
+                // Use fetch so we can show the server message before the
+                // page would otherwise navigate away.
+                e.preventDefault();
+                fetch(form.action, { method: 'POST' })
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 'success') {
+                            btn.textContent = data.message || 'Done — restarting…';
+                        } else {
+                            btn.disabled = false;
+                            btn.textContent = btn.dataset.originalText || 'Try again';
+                            alert('Error: ' + (data.message || 'Unknown error'));
+                        }
+                    })
+                    .catch(function() {
+                        btn.disabled = false;
+                        alert('Request failed. Check your connection to the device.');
+                    });
+            });
+            // Store original text for error recovery
+            var btn = form.querySelector('button[type="submit"]');
+            if (btn) btn.dataset.originalText = btn.textContent;
+        });
+    </script>
+</body>
+</html>

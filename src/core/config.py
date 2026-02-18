@@ -52,11 +52,19 @@ class Configuration:
     def _load(self) -> None:
         """Load configuration from disk.
 
-        Attempts to load the latest working generation. If none exists,
-        creates one from the template. Falls back through older generations
-        if the latest one is invalid. Cleans up old files after loading.
+        Checks for safe mode first. If safe mode trigger exists, loads
+        safemode.config.yaml. Otherwise, attempts to load the latest working
+        generation. Falls back through older generations if the latest one is
+        invalid. Cleans up old files after loading.
         """
         logger.info("Loading configuration...")
+
+        # Check if we should enter/continue safe mode
+        if self._should_enter_safe_mode():
+            logger.warning("Safe mode detected - loading safemode.config.yaml")
+            self._load_safe_mode_config()
+            return
+
         self.latest_generation_id = self.get_latest_generation_id()
         self.latest_working_generation_id = self.get_latest_working_generation_id()
 
@@ -310,7 +318,6 @@ class Configuration:
         for app_name, app_config in apps.items():
             if isinstance(app_config, dict):
                 order = app_config.get("order", float("inf"))
-                # Ensure order is an integer, default to infinity if not
                 if not isinstance(order, int):
                     logger.warning(
                         f"App '{app_name}' has invalid order value: {order}. "
@@ -319,7 +326,6 @@ class Configuration:
                     order = float("inf")
                 app_list.append((app_name, order))
 
-        # Sort by order, keeping original order for apps with same order value
         app_list.sort(key=lambda x: x[1])
         return [app_name for app_name, _ in app_list]
 
@@ -401,13 +407,6 @@ class Configuration:
             original_path = self.file_path
             broken_path = original_path.replace(".yaml", ".broken.yaml")
 
-            if self.latest_generation_id == 1:
-                os.remove(original_path)
-                logger.debug(
-                    "Deleted first generation, will rebuild from template on next boot."
-                )
-                return
-
             if not self.save(self.configuration_dictionary, is_broken=True):
                 logger.error(f"Failed to save broken configuration to {broken_path}")
                 return
@@ -421,13 +420,30 @@ class Configuration:
             logger.error(f"Failed to flag generation as broken: {e}")
 
     def critical_exit(self, reason: str) -> None:
-        """Log critical error, mark generation as broken, and restart.
+        """Enter safe mode due to critical error.
+
+        Guards against re-entry if already in safe mode (would cause infinite loop).
+        Otherwise:
+        1. Flags current generation as broken with reason
+        2. Writes safe mode trigger file (JSON) with reason and generation ID
+        3. Restarts system to load safemode.config.yaml
 
         :param reason: Description of the critical error.
         """
         logger.critical(f"Critical error occurred: {reason}")
-        logger.warning("Marking generation as broken.")
+
+        if self.is_safe_mode():
+            logger.critical(
+                "Critical error occurred inside safe mode itself — cannot re-enter. "
+                "Manual intervention required. Exiting."
+            )
+            logger.complete()
+            sys.exit(1)
+
+        logger.warning("Entering safe mode...")
+
         self.flag_current_generation_as_broken(reason)
+
         self.restart()
 
     def restart(self) -> None:
@@ -473,6 +489,184 @@ class Configuration:
             logger.critical(f"Failed to restart process: {e}", exc_info=True)
             logger.complete()
             sys.exit(1)
+
+    def _should_enter_safe_mode(self) -> bool:
+        """Check if system should enter safe mode.
+
+        Safe mode is triggered when the latest generation file is broken,
+        i.e. the latest overall generation ID exceeds the latest working one.
+        No separate trigger file is needed — the presence of a .broken.yaml
+        as the newest generation IS the signal.
+
+        :return: True if latest generation is broken, False otherwise.
+        """
+        latest_id = self.get_latest_generation_id()
+        if latest_id == 0:
+            return False
+        working_id = self.get_latest_working_generation_id()
+        return working_id < latest_id
+
+    def get_safe_mode_info(self) -> Optional[Dict[str, Any]]:
+        """Return safe mode info derived from the broken generation's YAML metadata.
+
+        Reads the broken generation file directly — no separate trigger file needed.
+
+        :return: Dict with 'reason', 'broken_generation_id', 'timestamp', or None.
+        """
+        latest_id = self.get_latest_generation_id()
+        if latest_id == 0:
+            return None
+        working_id = self.get_latest_working_generation_id()
+        if working_id >= latest_id:
+            return None
+
+        broken_path = os.path.join(
+            PathTo.GENERATIONS_FOLDER, f"generation_{latest_id}.broken.yaml"
+        )
+        if not os.path.exists(broken_path):
+            return {
+                "reason": f"Generation {latest_id} is broken (file not found)",
+                "broken_generation_id": latest_id,
+                "timestamp": "",
+            }
+
+        data = self._load_yaml(broken_path)
+        if data is None:
+            return {
+                "reason": f"Generation {latest_id} is broken (unreadable)",
+                "broken_generation_id": latest_id,
+                "timestamp": "",
+            }
+
+        metadata = data.get("Metadata", {})
+        return {
+            "reason": metadata.get("broken_reason") or "Unknown critical error",
+            "broken_generation_id": latest_id,
+            "timestamp": str(metadata.get("created_at", "")),
+        }
+
+    def get_broken_generation_for_editing(self) -> Optional[Dict[str, Any]]:
+        """Load the broken generation data so the webserver can offer editing.
+
+        Uses the broken_generation_id from the trigger file to locate the
+        .broken.yaml file and load its contents.
+
+        :return: Broken config dict if found and parseable, None otherwise.
+        """
+        info = self.get_safe_mode_info()
+        if info is None:
+            return None
+
+        broken_id = info.get("broken_generation_id", 0)
+        if broken_id <= 0:
+            return None
+
+        broken_path = os.path.join(
+            PathTo.GENERATIONS_FOLDER, f"generation_{broken_id}.broken.yaml"
+        )
+        if not os.path.exists(broken_path):
+            logger.warning(f"Broken generation file not found: {broken_path}")
+            return None
+
+        config_data = self._load_yaml(broken_path)
+        if config_data is None:
+            logger.error(f"Failed to parse broken generation: {broken_path}")
+        return config_data
+
+    def apply_recovery_config(self, config: Dict[str, Any]) -> bool:
+        """Save a corrected config as a new generation, without clearing safe mode.
+
+        Validates the config first. Caller is responsible for clearing safe mode
+        and restarting afterwards.
+
+        :param config: The corrected configuration dictionary to save.
+        :return: True if the new generation was created successfully.
+        """
+        is_valid, error_reason = self._validate_config(config)
+        if not is_valid:
+            logger.error(
+                f"Recovery config is invalid, refusing to save: {error_reason}"
+            )
+            return False
+
+        # Strip the broken flag if it was carried over from the broken generation
+        config = deepcopy(config)
+        config.setdefault("Metadata", {})["is_broken"] = False
+        config["Metadata"]["broken_reason"] = None
+
+        return self.create_new_config_generation(config)
+
+    def clear_safe_mode(self) -> bool:
+        """Delete the broken generation file to allow normal operation on next restart.
+
+        The broken .yaml file IS the safe mode trigger. Removing it causes
+        _should_enter_safe_mode() to return False on the next boot.
+        Called after the user has chosen a recovery action; caller must restart.
+
+        :return: True if cleared (or already clear), False on error.
+        """
+        latest_id = self.get_latest_generation_id()
+        if latest_id == 0:
+            logger.warning("No generation files found when clearing safe mode")
+            return True
+
+        working_id = self.get_latest_working_generation_id()
+        if working_id >= latest_id:
+            logger.debug("Safe mode already clear — latest generation is working")
+            return True
+
+        broken_path = os.path.join(
+            PathTo.GENERATIONS_FOLDER, f"generation_{latest_id}.broken.yaml"
+        )
+        if not os.path.exists(broken_path):
+            logger.warning(
+                f"Broken generation file not found when clearing: {broken_path}"
+            )
+            return False
+
+        try:
+            os.remove(broken_path)
+            logger.info(f"Safe mode cleared: removed {broken_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear safe mode: {e}")
+            return False
+
+    def _load_safe_mode_config(self) -> None:
+        """Load the safemode.config.yaml file.
+
+        This is a minimal configuration with no apps enabled,
+        used when system enters safe mode after a critical error.
+        """
+        safe_mode_path = PathTo.SAFEMODE_CONFIG_FILE
+
+        if not os.path.exists(safe_mode_path):
+            logger.critical(f"Safe mode config not found: {safe_mode_path}")
+            logger.critical("Cannot enter safe mode without safemode.config.yaml!")
+            sys.exit(1)
+
+        config_data = self._load_yaml(safe_mode_path)
+        if config_data is None:
+            logger.critical("Failed to parse safemode.config.yaml!")
+            sys.exit(1)
+
+        is_valid, error_reason = self._validate_config(config_data)
+        if not is_valid:
+            logger.critical(f"Safe mode config is invalid: {error_reason}")
+            sys.exit(1)
+
+        self.configuration_dictionary = config_data
+        self.file_path = safe_mode_path
+        logger.info(f"Safe mode configuration loaded: {safe_mode_path}")
+
+    def is_safe_mode(self) -> bool:
+        """Check if currently running in safe mode.
+
+        :return: True if in safe mode, False otherwise.
+        """
+        return os.path.abspath(self.file_path) == os.path.abspath(
+            PathTo.SAFEMODE_CONFIG_FILE
+        )
 
     def _ensure_metadata(self, config: Dict[str, Any]) -> bool:
         """Ensure config has valid metadata section with required fields.

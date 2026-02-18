@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 
-from apps import gif_viewer, life, main_screen, pomodoro
+from apps import gif_viewer, life, main_screen, pomodoro, safe_mode
 from core.system_context import SystemContext
 from models.application import Application
 from models.module import Module
@@ -49,8 +49,14 @@ class AppManager:
 
         logger.debug("Initializing apps.")
         try:
-            self.modules = self._load_modules()
-            self.apps = self._load_apps()
+            if self.context.config.is_safe_mode():
+                logger.warning("System in SAFE MODE - loading SafeMode app only")
+                self.modules = {}
+                self.apps = self._load_safe_mode_app()
+            else:
+                self.modules = self._load_modules()
+                self.apps = self._load_apps()
+
             self.enabled_apps = self._filter_apps_for_carousel()
             self._initialized = True
             logger.debug("All enabled apps initialized.")
@@ -70,6 +76,35 @@ class AppManager:
             # "weather": modules.weather_module.WeatherModule(),
             # "spotify": modules.spotify_module.SpotifyModule(),
         }
+
+    def _load_safe_mode_app(self) -> List[Application]:
+        """Load the SafeMode app when system is in safe mode.
+
+        Returns a single-item list containing only the SafeMode app,
+        which displays error information and recovery instructions.
+
+        :return: List containing only the SafeMode application.
+        """
+        callbacks: Dict[str, Callable] = {
+            "toggle_display": self.toggle_display,
+            "switch_next_app": self.switch_next_app,
+            "switch_prev_app": self.switch_prev_app,
+            "increase_brightness": self.increase_brightness,
+            "decrease_brightness": self.decrease_brightness,
+            "get_app_by_name": self.get_app_by_name,
+            "get_module_by_name": self.get_module_by_name,
+        }
+
+        try:
+            safe_mode_app = safe_mode.SafeMode(self.context, callbacks)
+            logger.info("SafeMode app loaded successfully")
+            return [safe_mode_app]
+        except Exception as e:
+            logger.critical(f"Failed to load SafeMode app: {e}")
+            logger.critical(
+                "Unable to load SafeMode app for critical error recovery. Exiting."
+            )
+            sys.exit(1)
 
     def _load_apps(self) -> List[Application]:
         """Load and initialize the apps with dependency injection, in configured order.
@@ -108,7 +143,15 @@ class AppManager:
                 except Exception as e:
                     logger.error(f"Failed to load app '{app_name}': {e}")
             else:
-                logger.warning(f"App '{app_name}' not found in app registry.")
+                app_config = self.context.config.get("Apps", app_name, default={})
+                if isinstance(app_config, dict) and app_config.get("enabled", False):
+                    logger.warning(
+                        f"App '{app_name}' is enabled but not found in app registry."
+                    )
+                else:
+                    logger.debug(
+                        f"App '{app_name}' not in registry (disabled, skipping)."
+                    )
 
         return apps
 

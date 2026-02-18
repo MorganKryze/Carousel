@@ -1,0 +1,32 @@
+# Safe mode configuration — loaded when a critical error has broken the active config.
+# This is a minimal stub: Modules and Apps are intentionally absent (they default to
+# empty dicts in the schema) because safe mode runs no apps and loads no modules.
+# Do NOT add Modules or Apps sections here.
+
+Metadata:
+  id: 0
+  version: 0.0.3
+  created_at: 2026-02-07 12:00
+  origin: author
+  is_broken: false
+  broken_reason:
+
+System:
+  Matrix:
+    led_rows: 32
+    led_cols: 64
+    brightness: 100
+    disable_hardware_pulsing: false
+    hardware_mapping: regular
+    target_fps: 12
+  Tilt-switch:
+    gpio: 19
+    bounce_time: 0.25
+  Encoder:
+    gpio_clk: 5
+    gpio_dt: 6
+    gpio_sw: 13
+    bounce_time: 0.05
+    double_press_window: 0.3
+    long_press_window: 0.5
+    natural_rotation: true

@@ -17,7 +17,6 @@ class Metadata(BaseModel):
     is_broken: bool = False
     broken_reason: Optional[str] = None
 
-
 class MatrixConfig(BaseModel):
     """LED matrix hardware configuration."""
 
@@ -113,5 +112,5 @@ class ConfigRoot(BaseModel):
 
     Metadata: Metadata
     System: SystemConfig
-    Modules: Dict[str, ModuleConfig]
-    Apps: Dict[str, AppConfig]
+    Modules: Dict[str, ModuleConfig] = {}
+    Apps: Dict[str, AppConfig] = {}
