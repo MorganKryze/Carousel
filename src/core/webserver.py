@@ -15,13 +15,13 @@ class WebServer:
     """Web server for configuring Carousel settings.
 
     In normal operation the webserver exposes the current generational config
-    for editing.  When the system is in safe mode it loads the broken generation
+    for editing.  When the system is in recovery mode it loads the broken generation
     (if available) into a separate ``_recovery_config`` dict so the user can
     edit it, then save a corrected generation before restarting.
     """
 
     def __init__(self):
-        """Initialize the web server and pre-load recovery config if in safe mode."""
+        """Initialize the web server and pre-load recovery config if in recovery mode."""
         self.is_connected = False
         self.lock = threading.Lock()
         self.config_manager = Configuration()
@@ -31,11 +31,11 @@ class WebServer:
             static_folder=PathTo.STATIC_FOLDER,
         )
 
-        # In safe mode: hold the broken config for editing.  None = not in safe mode
+        # In recovery mode: hold the broken config for editing.  None = not in recovery mode
         # or broken generation could not be loaded.
         self._recovery_config: Optional[Dict[str, Any]] = (
             self.config_manager.get_broken_generation_for_editing()
-            if self.config_manager.is_safe_mode()
+            if self.config_manager.is_recovery_mode()
             else None
         )
 
@@ -71,24 +71,26 @@ class WebServer:
             "/close", "close_connection", self.close_connection, methods=["POST"]
         )
 
-        # Safe mode recovery
-        self.app.add_url_rule("/safemode", "safemode_page", self.safemode_page)
+        # Recovery mode
         self.app.add_url_rule(
-            "/safemode/apply",
-            "safemode_apply",
-            self.safemode_apply,
+            "/recovery-mode", "recovery_mode_page", self.recovery_mode_page
+        )
+        self.app.add_url_rule(
+            "/recovery-mode/apply",
+            "recovery_mode_apply",
+            self.recovery_mode_apply,
             methods=["POST"],
         )
         self.app.add_url_rule(
-            "/safemode/rollback",
-            "safemode_rollback",
-            self.safemode_rollback,
+            "/recovery-mode/rollback",
+            "recovery_mode_rollback",
+            self.recovery_mode_rollback,
             methods=["POST"],
         )
         self.app.add_url_rule(
-            "/safemode/generate_new",
-            "safemode_generate_new",
-            self.safemode_generate_new,
+            "/recovery-mode/generate_new",
+            "recovery_mode_generate_new",
+            self.recovery_mode_generate_new,
             methods=["POST"],
         )
 
@@ -99,17 +101,17 @@ class WebServer:
     def _get_editable_config(self) -> Dict[str, Any]:
         """Return the config dict that should be presented for editing.
 
-        In safe mode this is the broken generation loaded at init time
+        In recovery mode this is the broken generation loaded at init time
         (so the user can fix and apply it).  In normal operation it is the
         live configuration dictionary.
         """
-        if self.config_manager.is_safe_mode() and self._recovery_config is not None:
+        if self.config_manager.is_recovery_mode() and self._recovery_config is not None:
             return self._recovery_config
         return self.config_manager.configuration_dictionary
 
     def _set_editable_config(self, config: Dict[str, Any]) -> None:
         """Persist an in-memory edit back to the appropriate store."""
-        if self.config_manager.is_safe_mode():
+        if self.config_manager.is_recovery_mode():
             self._recovery_config = config
         else:
             self.config_manager.configuration_dictionary = config
@@ -133,17 +135,17 @@ class WebServer:
     # ------------------------------------------------------------------
 
     def index(self):
-        """Landing page — redirect to safe-mode page when in safe mode."""
-        if self.config_manager.is_safe_mode():
-            return redirect(url_for("safemode_page"))
+        """Landing page — redirect to recovery mode page when in recovery mode."""
+        if self.config_manager.is_recovery_mode():
+            return redirect(url_for("recovery_mode_page"))
         with self.lock:
             self.is_connected = True
         return render_template("index.html")
 
     def homepage(self):
-        """Main configuration categories page — redirect when in safe mode."""
-        if self.config_manager.is_safe_mode():
-            return redirect(url_for("safemode_page"))
+        """Main configuration categories page — redirect when in recovery mode."""
+        if self.config_manager.is_recovery_mode():
+            return redirect(url_for("recovery_mode_page"))
 
         config = self.config_manager.configuration_dictionary
         apps = config.get("Apps", {})
@@ -155,11 +157,11 @@ class WebServer:
     def edit_section(self, section_name, subsection=None):
         """Edit a specific section/subsection of the configuration.
 
-        In safe mode the BROKEN generation is shown for editing, clearly
-        flagged in the template via ``is_safe_mode``.
+        In recovery mode the BROKEN generation is shown for editing, clearly
+        flagged in the template via ``is_recovery_mode``.
         """
         config = self._get_editable_config()
-        is_safe_mode = self.config_manager.is_safe_mode()
+        is_recovery_mode = self.config_manager.is_recovery_mode()
 
         if section_name in config:
             if subsection and subsection in config[section_name]:
@@ -168,22 +170,24 @@ class WebServer:
                     section_name=section_name,
                     subsection=subsection,
                     section_data=config[section_name][subsection],
-                    is_safe_mode=is_safe_mode,
+                    is_recovery_mode=is_recovery_mode,
                 )
             return render_template(
                 "section.html",
                 section_name=section_name,
                 section_data=config[section_name],
-                is_safe_mode=is_safe_mode,
+                is_recovery_mode=is_recovery_mode,
             )
 
-        target = url_for("safemode_page") if is_safe_mode else url_for("homepage")
+        target = (
+            url_for("recovery_mode_page") if is_recovery_mode else url_for("homepage")
+        )
         return redirect(target)
 
     def update_config(self):
         """Update the in-memory configuration from the submitted form.
 
-        In safe mode the edit is staged in ``_recovery_config``; it is only
+        In recovery mode the edit is staged in ``_recovery_config``; it is only
         persisted when the user clicks *Apply fixed config*.
         """
         config = self._get_editable_config()
@@ -221,8 +225,8 @@ class WebServer:
             # Stage the change
             self._set_editable_config(config)
 
-        if self.config_manager.is_safe_mode():
-            return redirect(url_for("safemode_page"))
+        if self.config_manager.is_recovery_mode():
+            return redirect(url_for("recovery_mode_page"))
 
         self.save_config(config)
         return redirect(url_for("homepage"))
@@ -261,19 +265,19 @@ class WebServer:
         return self.server_thread
 
     # ------------------------------------------------------------------
-    # Safe mode recovery routes
+    # Recovery mode routes
     # ------------------------------------------------------------------
 
-    def safemode_page(self):
-        """Dedicated safe mode recovery page.
+    def recovery_mode_page(self):
+        """Dedicated recovery mode page.
 
         Provides the user with contextual information about the critical error
         and the available recovery actions.
         """
-        if not self.config_manager.is_safe_mode():
+        if not self.config_manager.is_recovery_mode():
             return redirect(url_for("homepage"))
 
-        info = self.config_manager.get_safe_mode_info() or {}
+        info = self.config_manager.get_recovery_mode_info() or {}
         reason = info.get("reason", "Unknown critical error")
         broken_id = info.get("broken_generation_id", 0)
         timestamp = info.get("timestamp", "")
@@ -287,7 +291,7 @@ class WebServer:
             self.is_connected = True
 
         return render_template(
-            "safemode.html",
+            "recovery_mode.html",
             reason=reason,
             broken_id=broken_id,
             timestamp=timestamp,
@@ -296,14 +300,14 @@ class WebServer:
             previous_working_id=previous_working_id,
         )
 
-    def safemode_apply(self):
+    def recovery_mode_apply(self):
         """Apply the (edited) broken config as a new working generation.
 
         The user has reviewed/fixed the broken config via the section editor.
-        This saves it as a new generation, clears safe mode, and restarts.
+        This saves it as a new generation, clears recovery mode, and restarts.
         """
-        if not self.config_manager.is_safe_mode():
-            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+        if not self.config_manager.is_recovery_mode():
+            return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
         if self._recovery_config is None:
             return jsonify(
@@ -313,7 +317,7 @@ class WebServer:
                 }
             ), 400
 
-        logger.info("Safe mode: applying fixed config as new generation")
+        logger.info("Recovery mode: applying fixed config as new generation")
 
         if not self.config_manager.apply_recovery_config(self._recovery_config):
             return jsonify(
@@ -323,11 +327,11 @@ class WebServer:
                 }
             ), 422
 
-        if not self.config_manager.clear_safe_mode():
+        if not self.config_manager.clear_recovery_mode():
             return jsonify(
                 {
                     "status": "error",
-                    "message": "Config saved but failed to clear safe mode trigger",
+                    "message": "Config saved but failed to clear recovery mode trigger",
                 }
             ), 500
 
@@ -336,15 +340,15 @@ class WebServer:
             {"status": "success", "message": "Fixed config applied. Restarting..."}
         )
 
-    def safemode_rollback(self):
-        """Restore the previous working generation and exit safe mode.
+    def recovery_mode_rollback(self):
+        """Restore the previous working generation and exit recovery mode.
 
-        Simply clears the safe mode trigger; on the next boot ``_load()``
+        Simply clears the recovery mode trigger; on the next boot ``_load()``
         will naturally pick up the last valid working generation.
         Available only when a previous working generation exists.
         """
-        if not self.config_manager.is_safe_mode():
-            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+        if not self.config_manager.is_recovery_mode():
+            return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
         prev_id = self.config_manager.get_latest_working_generation_id()
         if prev_id <= 0:
@@ -355,13 +359,13 @@ class WebServer:
                 }
             ), 404
 
-        logger.info(f"Safe mode: rolling back to generation {prev_id}")
+        logger.info(f"Recovery mode: rolling back to generation {prev_id}")
 
-        if not self.config_manager.clear_safe_mode():
+        if not self.config_manager.clear_recovery_mode():
             return jsonify(
                 {
                     "status": "error",
-                    "message": "Failed to clear safe mode trigger",
+                    "message": "Failed to clear recovery mode trigger",
                 }
             ), 500
 
@@ -373,16 +377,16 @@ class WebServer:
             }
         )
 
-    def safemode_generate_new(self):
-        """Generate a fresh config from the template and exit safe mode.
+    def recovery_mode_generate_new(self):
+        """Generate a fresh config from the template and exit recovery mode.
 
         Available as a last resort when there is no previous working
         generation to roll back to (i.e., generation ID was 1).
         """
-        if not self.config_manager.is_safe_mode():
-            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+        if not self.config_manager.is_recovery_mode():
+            return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
-        logger.info("Safe mode: generating fresh config from template")
+        logger.info("Recovery mode: generating fresh config from template")
 
         try:
             self.config_manager.create_new_configuration_from_template()
@@ -394,11 +398,11 @@ class WebServer:
                 }
             ), 500
 
-        if not self.config_manager.clear_safe_mode():
+        if not self.config_manager.clear_recovery_mode():
             return jsonify(
                 {
                     "status": "error",
-                    "message": "Config generated but failed to clear safe mode trigger",
+                    "message": "Config generated but failed to clear recovery mode trigger",
                 }
             ), 500
 

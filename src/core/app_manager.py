@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 
-from apps import gif_viewer, life, main_screen, pomodoro, safe_mode
+from apps import gif_viewer, life, main_screen, pomodoro, recovery_mode
 from core.system_context import SystemContext
 from models.application import Application
 from models.module import Module
@@ -49,10 +49,12 @@ class AppManager:
 
         logger.debug("Initializing apps.")
         try:
-            if self.context.config.is_safe_mode():
-                logger.warning("System in SAFE MODE - loading SafeMode app only")
+            if self.context.config.is_recovery_mode():
+                logger.warning(
+                    "System in RECOVERY MODE - loading RecoveryMode app only"
+                )
                 self.modules = {}
-                self.apps = self._load_safe_mode_app()
+                self.apps = self._load_recovery_mode_app()
             else:
                 self.modules = self._load_modules()
                 self.apps = self._load_apps()
@@ -77,13 +79,13 @@ class AppManager:
             # "spotify": modules.spotify_module.SpotifyModule(),
         }
 
-    def _load_safe_mode_app(self) -> List[Application]:
-        """Load the SafeMode app when system is in safe mode.
+    def _load_recovery_mode_app(self) -> List[Application]:
+        """Load the RecoveryMode app when system is in recovery mode.
 
-        Returns a single-item list containing only the SafeMode app,
+        Returns a single-item list containing only the RecoveryMode app,
         which displays error information and recovery instructions.
 
-        :return: List containing only the SafeMode application.
+        :return: List containing only the RecoveryMode application.
         """
         callbacks: Dict[str, Callable] = {
             "toggle_display": self.toggle_display,
@@ -96,13 +98,13 @@ class AppManager:
         }
 
         try:
-            safe_mode_app = safe_mode.SafeMode(self.context, callbacks)
-            logger.info("SafeMode app loaded successfully")
-            return [safe_mode_app]
+            recovery_mode_app = recovery_mode.RecoveryMode(self.context, callbacks)
+            logger.info("RecoveryMode app loaded successfully")
+            return [recovery_mode_app]
         except Exception as e:
-            logger.critical(f"Failed to load SafeMode app: {e}")
+            logger.critical(f"Failed to load RecoveryMode app: {e}")
             logger.critical(
-                "Unable to load SafeMode app for critical error recovery. Exiting."
+                "Unable to load RecoveryMode app for critical error recovery. Exiting."
             )
             sys.exit(1)
 

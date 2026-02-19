@@ -8,7 +8,7 @@ class PathTo:
 
     GENERATIONS_FOLDER: str = "configs/"
     TEMPLATE_CONFIG_FILE: str = "template.config.yaml"
-    SAFEMODE_CONFIG_FILE: str = "safemode.config.yaml"
+    RECOVERY_CONFIG_FILE: str = "recovery.config.yaml"
     PYPROJECT_FILE: str = "pyproject.toml"
 
     LOGS_FOLDER: str = "logs"

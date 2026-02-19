@@ -165,16 +165,16 @@ class CustomFrames:
         return frame
 
     @classmethod
-    def safe_mode(cls) -> Image:
+    def recovery_mode(cls) -> Image:
         """
-        Generate a safe mode frame with recovery instructions.
+        Generate a recovery mode frame with recovery instructions.
 
-        :return: Safe mode information frame.
+        :return: Recovery mode information frame.
         """
         frame = cls.black()
         draw = ImageDraw.Draw(frame)
 
-        title = "SAFE MODE"
+        title = "RECOVERY"
         bbox = draw.textbbox((0, 0), title, font=cls.font)
         title_width = bbox[2] - bbox[0]
         title_x = (cls.led_cols - title_width) // 2

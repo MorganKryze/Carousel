@@ -48,17 +48,17 @@ class Configuration:
     def _load(self) -> None:
         """Load configuration from disk.
 
-        Checks for safe mode first. If safe mode trigger exists, loads
-        safemode.config.yaml. Otherwise, attempts to load the latest working
+        Checks for recovery mode first. If recovery mode trigger exists, loads
+        recovery.config.yaml. Otherwise, attempts to load the latest working
         generation. Falls back through older generations if the latest one is
         invalid.
         """
         logger.info("Loading configuration...")
 
-        # Check if we should enter/continue safe mode
-        if self._should_enter_safe_mode():
-            logger.warning("Safe mode detected - loading safemode.config.yaml")
-            self._load_safe_mode_config()
+        # Check if we should enter/continue recovery mode
+        if self._should_enter_recovery_mode():
+            logger.warning("Recovery mode detected - loading recovery.config.yaml")
+            self._load_recovery_mode_config()
             return
 
         self.latest_generation_id = self.get_latest_generation_id()
@@ -414,27 +414,27 @@ class Configuration:
             logger.error(f"Failed to flag generation as broken: {e}")
 
     def critical_exit(self, reason: str) -> None:
-        """Enter safe mode due to critical error.
+        """Enter recovery mode due to critical error.
 
-        Guards against re-entry if already in safe mode (would cause infinite loop).
+        Guards against re-entry if already in recovery mode (would cause infinite loop).
         Otherwise:
         1. Flags current generation as broken with reason
-        2. Writes safe mode trigger file (JSON) with reason and generation ID
-        3. Restarts system to load safemode.config.yaml
+        2. Writes recovery mode trigger file (JSON) with reason and generation ID
+        3. Restarts system to load recovery.config.yaml
 
         :param reason: Description of the critical error.
         """
         logger.critical(f"Critical error occurred: {reason}")
 
-        if self.is_safe_mode():
+        if self.is_recovery_mode():
             logger.critical(
-                "Critical error occurred inside safe mode itself — cannot re-enter. "
+                "Critical error occurred inside recovery mode itself — cannot re-enter. "
                 "Manual intervention required. Exiting."
             )
             logger.complete()
             sys.exit(1)
 
-        logger.warning("Entering safe mode...")
+        logger.warning("Entering recovery mode...")
 
         self.flag_current_generation_as_broken(reason)
 
@@ -484,10 +484,10 @@ class Configuration:
             logger.complete()
             sys.exit(1)
 
-    def _should_enter_safe_mode(self) -> bool:
-        """Check if system should enter safe mode.
+    def _should_enter_recovery_mode(self) -> bool:
+        """Check if system should enter recovery mode.
 
-        Safe mode is triggered when the latest generation file is broken,
+        Recovery mode is triggered when the latest generation file is broken,
         i.e. the latest overall generation ID exceeds the latest working one.
         No separate trigger file is needed — the presence of a .broken.yaml
         as the newest generation IS the signal.
@@ -500,8 +500,8 @@ class Configuration:
         working_id = self.get_latest_working_generation_id()
         return working_id < latest_id
 
-    def get_safe_mode_info(self) -> Optional[Dict[str, Any]]:
-        """Return safe mode info derived from the broken generation's YAML metadata.
+    def get_recovery_mode_info(self) -> Optional[Dict[str, Any]]:
+        """Return recovery mode info derived from the broken generation's YAML metadata.
 
         Reads the broken generation file directly — no separate trigger file needed.
 
@@ -547,7 +547,7 @@ class Configuration:
 
         :return: Broken config dict if found and parseable, None otherwise.
         """
-        info = self.get_safe_mode_info()
+        info = self.get_recovery_mode_info()
         if info is None:
             return None
 
@@ -568,9 +568,9 @@ class Configuration:
         return config_data
 
     def apply_recovery_config(self, config: Dict[str, Any]) -> bool:
-        """Save a corrected config as a new generation, without clearing safe mode.
+        """Save a corrected config as a new generation, without clearing recovery mode.
 
-        Validates the config first. Caller is responsible for clearing safe mode
+        Validates the config first. Caller is responsible for clearing recovery mode
         and restarting afterwards.
 
         :param config: The corrected configuration dictionary to save.
@@ -590,23 +590,23 @@ class Configuration:
 
         return self.create_new_config_generation(config)
 
-    def clear_safe_mode(self) -> bool:
+    def clear_recovery_mode(self) -> bool:
         """Delete the broken generation file to allow normal operation on next restart.
 
-        The broken .yaml file IS the safe mode trigger. Removing it causes
-        _should_enter_safe_mode() to return False on the next boot.
+        The broken .yaml file IS the recovery mode trigger. Removing it causes
+        _should_enter_recovery_mode() to return False on the next boot.
         Called after the user has chosen a recovery action; caller must restart.
 
         :return: True if cleared (or already clear), False on error.
         """
         latest_id = self.get_latest_generation_id()
         if latest_id == 0:
-            logger.warning("No generation files found when clearing safe mode")
+            logger.warning("No generation files found when clearing recovery mode")
             return True
 
         working_id = self.get_latest_working_generation_id()
         if working_id >= latest_id:
-            logger.debug("Safe mode already clear — latest generation is working")
+            logger.debug("Recovery mode already clear — latest generation is working")
             return True
 
         broken_path = os.path.join(
@@ -620,46 +620,46 @@ class Configuration:
 
         try:
             os.remove(broken_path)
-            logger.info(f"Safe mode cleared: removed {broken_path}")
+            logger.info(f"Recovery mode cleared: removed {broken_path}")
             return True
         except Exception as e:
-            logger.error(f"Failed to clear safe mode: {e}")
+            logger.error(f"Failed to clear recovery mode: {e}")
             return False
 
-    def _load_safe_mode_config(self) -> None:
-        """Load the safemode.config.yaml file.
+    def _load_recovery_mode_config(self) -> None:
+        """Load the recovery.config.yaml file.
 
         This is a minimal configuration with no apps enabled,
-        used when system enters safe mode after a critical error.
+        used when system enters recovery mode after a critical error.
         """
-        safe_mode_path = PathTo.SAFEMODE_CONFIG_FILE
+        recovery_mode_path = PathTo.RECOVERY_CONFIG_FILE
 
-        if not os.path.exists(safe_mode_path):
-            logger.critical(f"Safe mode config not found: {safe_mode_path}")
-            logger.critical("Cannot enter safe mode without safemode.config.yaml!")
+        if not os.path.exists(recovery_mode_path):
+            logger.critical(f"Recovery mode config not found: {recovery_mode_path}")
+            logger.critical("Cannot enter recovery mode without recovery.config.yaml!")
             sys.exit(1)
 
-        config_data = self._load_yaml(safe_mode_path)
+        config_data = self._load_yaml(recovery_mode_path)
         if config_data is None:
-            logger.critical("Failed to parse safemode.config.yaml!")
+            logger.critical("Failed to parse recovery.config.yaml!")
             sys.exit(1)
 
         is_valid, error_reason = self._validate_config(config_data)
         if not is_valid:
-            logger.critical(f"Safe mode config is invalid: {error_reason}")
+            logger.critical(f"Recovery mode config is invalid: {error_reason}")
             sys.exit(1)
 
         self.configuration_dictionary = config_data
-        self.file_path = safe_mode_path
-        logger.info(f"Safe mode configuration loaded: {safe_mode_path}")
+        self.file_path = recovery_mode_path
+        logger.info(f"Recovery mode configuration loaded: {recovery_mode_path}")
 
-    def is_safe_mode(self) -> bool:
-        """Check if currently running in safe mode.
+    def is_recovery_mode(self) -> bool:
+        """Check if currently running in recovery mode.
 
-        :return: True if in safe mode, False otherwise.
+        :return: True if in recovery mode, False otherwise.
         """
         return os.path.abspath(self.file_path) == os.path.abspath(
-            PathTo.SAFEMODE_CONFIG_FILE
+            PathTo.RECOVERY_CONFIG_FILE
         )
 
     def _ensure_metadata(self, config: Dict[str, Any]) -> bool:

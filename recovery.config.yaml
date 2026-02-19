@@ -1,6 +1,6 @@
-# Safe mode configuration — loaded when a critical error has broken the active config.
+# Recovery mode configuration — loaded when a critical error has broken the active config.
 # This is a minimal stub: Modules and Apps are intentionally absent (they default to
-# empty dicts in the schema) because safe mode runs no apps and loads no modules.
+# empty dicts in the schema) because recovery mode runs no apps and loads no modules.
 # Do NOT add Modules or Apps sections here.
 
 Metadata:

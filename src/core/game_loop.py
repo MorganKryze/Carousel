@@ -44,10 +44,10 @@ class GameLoop:
         self.previous_frame: Image = CustomFrames.black()
         self.previous_frame_bytes = self.previous_frame.tobytes()
 
-        # Auto-start webserver if in safe mode
-        if self.context.config.is_safe_mode():
-            logger.warning("SAFE MODE: Auto-starting webserver for recovery")
-            self._start_webserver_for_safe_mode()
+        # Auto-start webserver if in recovery mode
+        if self.context.config.is_recovery_mode():
+            logger.warning("RECOVERY MODE: Auto-starting webserver for recovery")
+            self._start_webserver_for_recovery_mode()
 
         logger.info("Game loop initialized successfully.")
 
@@ -56,18 +56,18 @@ class GameLoop:
         """Check if GameLoop singleton has been initialized."""
         return cls._instance is not None
 
-    def _start_webserver_for_safe_mode(self) -> None:
-        """Start webserver in safe mode for user to fix configuration."""
+    def _start_webserver_for_recovery_mode(self) -> None:
+        """Start webserver in recovery mode for user to fix configuration."""
         try:
             from core.webserver import WebServer
 
             webserver = WebServer()
             webserver.start(port=9000, debug=False)
 
-            logger.info("Webserver started on port 9000 for safe mode recovery")
+            logger.info("Webserver started on port 9000 for recovery mode recovery")
             logger.info("Access the webserver to fix configuration or rollback")
         except Exception as e:
-            logger.error(f"Failed to start webserver in safe mode: {e}")
+            logger.error(f"Failed to start webserver in recovery mode: {e}")
             logger.error("Manual intervention may be required")
 
     def setup_signal_handlers(self, render_task: asyncio.Task) -> None:

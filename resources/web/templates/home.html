@@ -10,11 +10,11 @@
     <div class="container">
         <h1>Carousel Configuration</h1>
 
-        {% if is_safe_mode %}
-        <div class="safemode-banner">
-            <strong>⚠ SAFE MODE</strong> — You are editing the <em>broken</em> configuration.
+        {% if is_recovery_mode %}
+        <div class="recovery-mode-banner">
+            <strong>⚠ RECOVERY MODE</strong> — You are editing the <em>broken</em> configuration.
             Changes are staged in memory. When finished,
-            <a href="{{ url_for('safemode_page') }}">return to the recovery page</a>
+            <a href="{{ url_for('recovery_mode_page') }}">return to the recovery page</a>
             and click <strong>Apply fixed config &amp; restart</strong>.
         </div>
         {% endif %}

@@ -251,10 +251,10 @@ input:focus, select:focus {
         grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
     }
 }
-/* ── Safe mode ─────────────────────────────────────────────────────── */
+/* ── Recovery mode ─────────────────────────────────────────────────── */
 
-/* Sticky warning banner shown inside the config editor during safe mode */
-.safemode-banner {
+/* Sticky warning banner shown inside the config editor during recovery mode */
+.recovery-mode-banner {
     background: #fff3cd;
     border: 1px solid #ffc107;
     border-left: 5px solid #ffc107;
@@ -265,18 +265,18 @@ input:focus, select:focus {
     color: #664d03;
 }
 
-.safemode-banner a {
+.recovery-mode-banner a {
     color: #664d03;
     font-weight: 600;
 }
 
-/* Safe mode page ─ header */
-.safemode-header {
+/* Recovery mode page ─ header */
+.recovery-mode-header {
     text-align: center;
     margin-bottom: 2rem;
 }
 
-.safemode-badge {
+.recovery-mode-badge {
     display: inline-block;
     background: #dc3545;
     color: #fff;
@@ -289,20 +289,20 @@ input:focus, select:focus {
     margin-bottom: 0.75rem;
 }
 
-.safemode-header h1 {
+.recovery-mode-header h1 {
     margin: 0.25rem 0 0.5rem;
     font-size: 1.75rem;
     color: #dc3545;
 }
 
-.safemode-subtitle {
+.recovery-mode-subtitle {
     color: #555;
     max-width: 600px;
     margin: 0 auto;
 }
 
-/* Safe mode page ─ error details panel */
-.safemode-error-panel {
+/* Recovery mode page ─ error details panel */
+.recovery-mode-error-panel {
     background: #fff5f5;
     border: 1px solid #f5c6cb;
     border-radius: 8px;
@@ -310,13 +310,13 @@ input:focus, select:focus {
     margin-bottom: 2rem;
 }
 
-.safemode-error-panel h2 {
+.recovery-mode-error-panel h2 {
     margin-top: 0;
     font-size: 1.1rem;
     color: #842029;
 }
 
-.safemode-details {
+.recovery-mode-details {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.4rem 1.25rem;
@@ -324,18 +324,18 @@ input:focus, select:focus {
     font-size: 0.95rem;
 }
 
-.safemode-details dt {
+.recovery-mode-details dt {
     font-weight: 600;
     color: #842029;
     white-space: nowrap;
 }
 
-.safemode-details dd {
+.recovery-mode-details dd {
     margin: 0;
     word-break: break-word;
 }
 
-.safemode-reason {
+.recovery-mode-reason {
     font-family: 'Courier New', Courier, monospace;
     background: #fce8e9;
     padding: 0.15rem 0.4rem;
@@ -343,37 +343,37 @@ input:focus, select:focus {
     white-space: pre-wrap;
 }
 
-/* Safe mode page ─ action cards */
-.safemode-actions h2 {
+/* Recovery mode page ─ action cards */
+.recovery-mode-actions h2 {
     margin-bottom: 1rem;
     font-size: 1.1rem;
     color: #333;
 }
 
-.safemode-action-card {
+.recovery-mode-action-card {
     border: 1px solid #dee2e6;
     border-radius: 8px;
     margin-bottom: 1.25rem;
     overflow: hidden;
 }
 
-.safemode-action-body {
+.recovery-mode-action-body {
     padding: 1.25rem 1.5rem 1rem;
 }
 
-.safemode-action-body h3 {
+.recovery-mode-action-body h3 {
     margin-top: 0;
     font-size: 1rem;
     color: #333;
 }
 
-.safemode-action-body p {
+.recovery-mode-action-body p {
     color: #555;
     margin-bottom: 0.75rem;
     font-size: 0.95rem;
 }
 
-.safemode-action-footer {
+.recovery-mode-action-footer {
     background: #f8f9fa;
     border-top: 1px solid #dee2e6;
     padding: 0.75rem 1.5rem;
