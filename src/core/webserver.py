@@ -2,7 +2,7 @@ import socket
 import subprocess
 import threading
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from loguru import logger
@@ -12,37 +12,53 @@ from utils.path import PathTo
 
 
 class WebServer:
-    """Web server for configuring Carousel settings"""
+    """Web server for configuring Carousel settings.
+
+    In normal operation the webserver exposes the current generational config
+    for editing.  When the system is in safe mode it loads the broken generation
+    (if available) into a separate ``_recovery_config`` dict so the user can
+    edit it, then save a corrected generation before restarting.
+    """
 
     def __init__(self):
-        """Initialize the web server"""
+        """Initialize the web server and pre-load recovery config if in safe mode."""
         self.is_connected = False
         self.lock = threading.Lock()
+        self.config_manager = Configuration()
         self.app = Flask(
             __name__,
             template_folder=PathTo.TEMPLATES_FOLDER,
             static_folder=PathTo.STATIC_FOLDER,
         )
+
+        # In safe mode: hold the broken config for editing.  None = not in safe mode
+        # or broken generation could not be loaded.
+        self._recovery_config: Optional[Dict[str, Any]] = (
+            self.config_manager.get_broken_generation_for_editing()
+            if self.config_manager.is_safe_mode()
+            else None
+        )
+
         self._register_routes()
         self.server_thread = None
 
-    def _register_routes(self):
-        """Register all routes with the Flask app"""
-        # Landing page
-        self.app.add_url_rule("/", "index", self.index)
+    # ------------------------------------------------------------------
+    # Route registration
+    # ------------------------------------------------------------------
 
-        # Home page with configuration categories
+    def _register_routes(self) -> None:
+        """Register all routes with the Flask app."""
+        # Landing / home
+        self.app.add_url_rule("/", "index", self.index)
         self.app.add_url_rule("/home", "homepage", self.homepage)
 
-        # Edit sections
+        # Config editing
         self.app.add_url_rule(
             "/section/<section_name>", "edit_section", self.edit_section
         )
         self.app.add_url_rule(
             "/section/<section_name>/<subsection>", "edit_section", self.edit_section
         )
-
-        # Update configuration
         self.app.add_url_rule(
             "/update", "update_config", self.update_config, methods=["POST"]
         )
@@ -55,22 +71,81 @@ class WebServer:
             "/close", "close_connection", self.close_connection, methods=["POST"]
         )
 
+        # Safe mode recovery
+        self.app.add_url_rule("/safemode", "safemode_page", self.safemode_page)
+        self.app.add_url_rule(
+            "/safemode/apply",
+            "safemode_apply",
+            self.safemode_apply,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/safemode/rollback",
+            "safemode_rollback",
+            self.safemode_rollback,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/safemode/generate_new",
+            "safemode_generate_new",
+            self.safemode_generate_new,
+            methods=["POST"],
+        )
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _get_editable_config(self) -> Dict[str, Any]:
+        """Return the config dict that should be presented for editing.
+
+        In safe mode this is the broken generation loaded at init time
+        (so the user can fix and apply it).  In normal operation it is the
+        live configuration dictionary.
+        """
+        if self.config_manager.is_safe_mode() and self._recovery_config is not None:
+            return self._recovery_config
+        return self.config_manager.configuration_dictionary
+
+    def _set_editable_config(self, config: Dict[str, Any]) -> None:
+        """Persist an in-memory edit back to the appropriate store."""
+        if self.config_manager.is_safe_mode():
+            self._recovery_config = config
+        else:
+            self.config_manager.configuration_dictionary = config
+
     def save_config(self, config: Dict[str, Any]) -> None:
-        """Save configuration to a temporary file"""
-        config["Metadata"]["id"] += 1
-        Configuration.save(config)
+        """Create a new generation from *config* (normal mode only)."""
+        if not self.config_manager.create_new_config_generation(config):
+            logger.error("Failed to save configuration update as new generation.")
+
+    def _delayed_restart(self, delay: float = 1.0) -> None:
+        """Restart the application process after a short delay."""
+
+        def _do():
+            time.sleep(delay)
+            self.config_manager.restart()
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # Normal routes
+    # ------------------------------------------------------------------
 
     def index(self):
-        """Welcome page with warnings"""
+        """Landing page — redirect to safe-mode page when in safe mode."""
+        if self.config_manager.is_safe_mode():
+            return redirect(url_for("safemode_page"))
         with self.lock:
             self.is_connected = True
         return render_template("index.html")
 
     def homepage(self):
-        """Main page showing configuration categories"""
-        config = Configuration.configuration_dictionary
+        """Main configuration categories page — redirect when in safe mode."""
+        if self.config_manager.is_safe_mode():
+            return redirect(url_for("safemode_page"))
 
-        # Split configuration into three main categories
+        config = self.config_manager.configuration_dictionary
         apps = config.get("Apps", {})
         modules = config.get("Modules", {})
         system = config.get("System", {})
@@ -78,124 +153,269 @@ class WebServer:
         return render_template("home.html", apps=apps, modules=modules, system=system)
 
     def edit_section(self, section_name, subsection=None):
-        """Edit a specific section/subsection of the configuration"""
-        config = Configuration.configuration_dictionary
+        """Edit a specific section/subsection of the configuration.
+
+        In safe mode the BROKEN generation is shown for editing, clearly
+        flagged in the template via ``is_safe_mode``.
+        """
+        config = self._get_editable_config()
+        is_safe_mode = self.config_manager.is_safe_mode()
 
         if section_name in config:
             if subsection and subsection in config[section_name]:
-                # Edit a specific subsection
                 return render_template(
                     "section.html",
                     section_name=section_name,
                     subsection=subsection,
                     section_data=config[section_name][subsection],
+                    is_safe_mode=is_safe_mode,
                 )
-            else:
-                # Edit the whole section
-                return render_template(
-                    "section.html",
-                    section_name=section_name,
-                    section_data=config[section_name],
-                )
+            return render_template(
+                "section.html",
+                section_name=section_name,
+                section_data=config[section_name],
+                is_safe_mode=is_safe_mode,
+            )
 
-        return redirect(url_for("homepage"))
+        target = url_for("safemode_page") if is_safe_mode else url_for("homepage")
+        return redirect(target)
 
     def update_config(self):
-        """Update the configuration with form data"""
-        config = Configuration.configuration_dictionary
+        """Update the in-memory configuration from the submitted form.
+
+        In safe mode the edit is staged in ``_recovery_config``; it is only
+        persisted when the user clicks *Apply fixed config*.
+        """
+        config = self._get_editable_config()
         data = request.form.to_dict()
 
         section = data.get("section")
         subsection = data.get("subsection")
 
         if section and section in config:
-            if subsection and subsection in config[section]:
-                # Update subsection
-                for key, value in data.items():
-                    if (
-                        key not in ["section", "subsection"]
-                        and key in config[section][subsection]
-                    ):
-                        # Convert values to appropriate types
-                        if isinstance(config[section][subsection][key], bool):
-                            config[section][subsection][key] = value.lower() == "true"
-                        elif isinstance(config[section][subsection][key], int):
-                            try:
-                                config[section][subsection][key] = int(value)
-                            except ValueError:
-                                pass
-                        elif isinstance(config[section][subsection][key], float):
-                            try:
-                                config[section][subsection][key] = float(value)
-                            except ValueError:
-                                pass
-                        else:
-                            config[section][subsection][key] = value
-            else:
-                # Update main section
-                for key, value in data.items():
-                    if key != "section" and key in config[section]:
-                        # Convert values to appropriate types
-                        if isinstance(config[section][key], bool):
-                            config[section][key] = value.lower() == "true"
-                        elif isinstance(config[section][key], int):
-                            try:
-                                config[section][key] = int(value)
-                            except ValueError:
-                                pass
-                        elif isinstance(config[section][key], float):
-                            try:
-                                config[section][key] = float(value)
-                            except ValueError:
-                                pass
-                        else:
-                            config[section][key] = value
+            target = (
+                config[section][subsection]
+                if subsection and subsection in config[section]
+                else config[section]
+            )
+            skip_keys = {"section", "subsection"}
+
+            for key, value in data.items():
+                if key in skip_keys or key not in target:
+                    continue
+                if isinstance(target[key], bool):
+                    target[key] = value.lower() == "true"
+                elif isinstance(target[key], int):
+                    try:
+                        target[key] = int(value)
+                    except ValueError:
+                        pass
+                elif isinstance(target[key], float):
+                    try:
+                        target[key] = float(value)
+                    except ValueError:
+                        pass
+                else:
+                    target[key] = value
+
+            # Stage the change
+            self._set_editable_config(config)
+
+        if self.config_manager.is_safe_mode():
+            return redirect(url_for("safemode_page"))
 
         self.save_config(config)
         return redirect(url_for("homepage"))
 
     def restart_system(self):
-        """Restart the Raspberry Pi to apply configuration changes"""
+        """Restart the Raspberry Pi (apply hardware-level changes)."""
         logger.info("System restart requested from web interface")
 
-        def restart():
-            time.sleep(1)  # Brief delay to allow response to be sent
+        def _do():
+            time.sleep(1)
             subprocess.call(["sudo", "reboot"])
 
-        threading.Thread(target=restart).start()
+        threading.Thread(target=_do).start()
         return jsonify({"status": "Restarting to apply configuration changes..."})
 
     def close_connection(self):
-        """Close the connection and re-enable matrix control"""
+        """Close the web connection and re-enable local matrix control."""
         with self.lock:
             self.is_connected = False
-
         return jsonify({"status": "Connection closed"})
 
     def is_user_connected(self) -> bool:
-        """Check if anyone is connected to the web interface"""
+        """Check if anyone is connected to the web interface."""
         with self.lock:
             return self.is_connected
 
     def start(self, port: int, debug: bool) -> threading.Thread:
-        """Start the web server in a separate thread"""
+        """Start the web server in a background daemon thread."""
 
         def run_server():
-            self.app.run(host="0.0.0.0", port=port, debug=debug)
+            self.app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)
 
-        self.server_thread = threading.Thread(target=run_server)
-        self.server_thread.daemon = True
+        self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
-
         logger.info(f"Web server started on port {port}")
         return self.server_thread
 
+    # ------------------------------------------------------------------
+    # Safe mode recovery routes
+    # ------------------------------------------------------------------
+
+    def safemode_page(self):
+        """Dedicated safe mode recovery page.
+
+        Provides the user with contextual information about the critical error
+        and the available recovery actions.
+        """
+        if not self.config_manager.is_safe_mode():
+            return redirect(url_for("homepage"))
+
+        info = self.config_manager.get_safe_mode_info() or {}
+        reason = info.get("reason", "Unknown critical error")
+        broken_id = info.get("broken_generation_id", 0)
+        timestamp = info.get("timestamp", "")
+
+        # Determine which recovery options are available
+        has_broken_config = self._recovery_config is not None
+        previous_working_id = self.config_manager.get_latest_working_generation_id()
+        has_previous = previous_working_id > 0
+
+        with self.lock:
+            self.is_connected = True
+
+        return render_template(
+            "safemode.html",
+            reason=reason,
+            broken_id=broken_id,
+            timestamp=timestamp,
+            has_broken_config=has_broken_config,
+            has_previous=has_previous,
+            previous_working_id=previous_working_id,
+        )
+
+    def safemode_apply(self):
+        """Apply the (edited) broken config as a new working generation.
+
+        The user has reviewed/fixed the broken config via the section editor.
+        This saves it as a new generation, clears safe mode, and restarts.
+        """
+        if not self.config_manager.is_safe_mode():
+            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+
+        if self._recovery_config is None:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "No recovery config available to apply",
+                }
+            ), 400
+
+        logger.info("Safe mode: applying fixed config as new generation")
+
+        if not self.config_manager.apply_recovery_config(self._recovery_config):
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Config validation failed — fix the remaining errors before applying",
+                }
+            ), 422
+
+        if not self.config_manager.clear_safe_mode():
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Config saved but failed to clear safe mode trigger",
+                }
+            ), 500
+
+        self._delayed_restart()
+        return jsonify(
+            {"status": "success", "message": "Fixed config applied. Restarting..."}
+        )
+
+    def safemode_rollback(self):
+        """Restore the previous working generation and exit safe mode.
+
+        Simply clears the safe mode trigger; on the next boot ``_load()``
+        will naturally pick up the last valid working generation.
+        Available only when a previous working generation exists.
+        """
+        if not self.config_manager.is_safe_mode():
+            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+
+        prev_id = self.config_manager.get_latest_working_generation_id()
+        if prev_id <= 0:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "No previous working generation found",
+                }
+            ), 404
+
+        logger.info(f"Safe mode: rolling back to generation {prev_id}")
+
+        if not self.config_manager.clear_safe_mode():
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Failed to clear safe mode trigger",
+                }
+            ), 500
+
+        self._delayed_restart()
+        return jsonify(
+            {
+                "status": "success",
+                "message": f"Restoring generation {prev_id}. Restarting...",
+            }
+        )
+
+    def safemode_generate_new(self):
+        """Generate a fresh config from the template and exit safe mode.
+
+        Available as a last resort when there is no previous working
+        generation to roll back to (i.e., generation ID was 1).
+        """
+        if not self.config_manager.is_safe_mode():
+            return jsonify({"status": "error", "message": "Not in safe mode"}), 400
+
+        logger.info("Safe mode: generating fresh config from template")
+
+        try:
+            self.config_manager.create_new_configuration_from_template()
+        except SystemExit:
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Failed to generate config from template",
+                }
+            ), 500
+
+        if not self.config_manager.clear_safe_mode():
+            return jsonify(
+                {
+                    "status": "error",
+                    "message": "Config generated but failed to clear safe mode trigger",
+                }
+            ), 500
+
+        self._delayed_restart()
+        return jsonify(
+            {"status": "success", "message": "Fresh config generated. Restarting..."}
+        )
+
+    # ------------------------------------------------------------------
+    # Static helpers
+    # ------------------------------------------------------------------
+
     @staticmethod
     def check_internet_connectivity() -> bool:
-        """
-        Check if internet connectivity is available by trying to reach a reliable host.
+        """Check if internet connectivity is available.
 
-        :return: bool: True if internet is reachable, False otherwise.
+        :return: True if internet is reachable, False otherwise.
         """
         GOOGLE_DNS = "8.8.8.8"
         CLOUDFLARE_DNS = "1.1.1.1"
@@ -209,5 +429,4 @@ class WebServer:
                 socket.create_connection((CLOUDFLARE_DNS, DNS_PORT), timeout=TIMEOUT)
                 return True
             except OSError:
-                return False
                 return False

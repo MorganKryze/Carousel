@@ -17,14 +17,24 @@ class GameLoop:
     Main game loop coordinating singleton components.
     """
 
-    def __init__(self, target_fps: int = 24, use_emulator: bool = False):
-        self.target_fps = target_fps
-        self.time_per_frame = 1.0 / target_fps
+    _instance: "GameLoop" = None
+
+    def __new__(cls, use_emulator: bool = False) -> "GameLoop":
+        """Ensure only one instance exists."""
+        if cls._instance is None:
+            cls._instance = super(GameLoop, cls).__new__(cls)
+            cls._instance._initialize(use_emulator)
+        return cls._instance
+
+    def _initialize(self, use_emulator: bool = False) -> None:
+        """Initialize game loop state on creation."""
+        self.context = SystemContext(use_emulator=use_emulator)
+
+        self.target_fps = self.context.display.target_fps
+        self.time_per_frame = 1.0 / self.target_fps
         self.last_frame_time = time.time()
         self.running = True
 
-        self.context = SystemContext(use_emulator=use_emulator)
-        
         event_loop = asyncio.get_running_loop()
         self.context.input_controller.set_event_loop(event_loop)
 
@@ -34,7 +44,31 @@ class GameLoop:
         self.previous_frame: Image = CustomFrames.black()
         self.previous_frame_bytes = self.previous_frame.tobytes()
 
+        # Auto-start webserver if in safe mode
+        if self.context.config.is_safe_mode():
+            logger.warning("SAFE MODE: Auto-starting webserver for recovery")
+            self._start_webserver_for_safe_mode()
+
         logger.info("Game loop initialized successfully.")
+
+    @classmethod
+    def is_initialized(cls) -> bool:
+        """Check if GameLoop singleton has been initialized."""
+        return cls._instance is not None
+
+    def _start_webserver_for_safe_mode(self) -> None:
+        """Start webserver in safe mode for user to fix configuration."""
+        try:
+            from core.webserver import WebServer
+
+            webserver = WebServer()
+            webserver.start(port=9000, debug=False)
+
+            logger.info("Webserver started on port 9000 for safe mode recovery")
+            logger.info("Access the webserver to fix configuration or rollback")
+        except Exception as e:
+            logger.error(f"Failed to start webserver in safe mode: {e}")
+            logger.error("Manual intervention may be required")
 
     def setup_signal_handlers(self, render_task: asyncio.Task) -> None:
         """Register signal handlers for graceful shutdown."""
@@ -104,19 +138,40 @@ class GameLoop:
         state.encoder_rotation_this_frame = 0
 
     def cleanup(self) -> None:
-        """Release all hardware resources."""
+        """Release all hardware resources.
+
+        Critical for Raspberry Pi: Ensures GPIO pins, SPI/I2C buses, and display
+        hardware are properly released. This is essential before restart, as the
+        new process cannot claim resources still held by the old process.
+        """
         logger.info("Cleaning up resources...")
 
         if SystemContext.is_initialized():
             if self.context.display:
-                self.context.display.matrix.SetImage(CustomFrames.black())
-                self.context.display.cleanup()
+                try:
+                    logger.debug("Clearing display to black...")
+                    self.context.display.matrix.SetImage(CustomFrames.black())
+                except Exception as e:
+                    logger.warning(f"Failed to clear display: {e}")
+
+                try:
+                    logger.debug("Releasing display controller (SPI/GPIO)...")
+                    self.context.display.cleanup()
+                except Exception as e:
+                    logger.error(f"Failed to cleanup display controller: {e}")
 
             if self.context.input_controller:
-                self.context.input_controller.cleanup()
+                try:
+                    logger.debug("Releasing input controller (GPIO pins)...")
+                    self.context.input_controller.cleanup()
+                except Exception as e:
+                    logger.error(f"Failed to cleanup input controller: {e}")
 
             if self.context.state:
-                self.context.state.encoder_rotation_this_frame = 0
-                self.context.state.encoder_queue.queue.clear()
-
+                try:
+                    logger.debug("Clearing system state and queues...")
+                    self.context.state.encoder_rotation_this_frame = 0
+                    self.context.state.encoder_queue.queue.clear()
+                except Exception as e:
+                    logger.warning(f"Failed to clear state: {e}")
         logger.info("Cleanup complete.")

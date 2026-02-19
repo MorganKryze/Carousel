@@ -3,7 +3,7 @@ from typing import Callable, Dict, List, Optional
 
 from loguru import logger
 
-from apps import gif_viewer, main_screen, pomodoro
+from apps import gif_viewer, life, main_screen, pomodoro, safe_mode
 from core.system_context import SystemContext
 from models.application import Application
 from models.module import Module
@@ -30,7 +30,6 @@ class AppManager:
         self.modules: Dict[str, Module] = {}
         self.apps: List[Application] = []
         self.enabled_apps: List[Application] = []
-        self.carousel: List[Application] = []
         self._initialized = False
 
     def init_apps(self) -> None:
@@ -50,10 +49,15 @@ class AppManager:
 
         logger.debug("Initializing apps.")
         try:
-            self.modules = self._load_modules()
-            self.apps = self._load_apps()
-            self.enabled_apps = [app for app in self.apps if app.enabled]
-            self.carousel = self._filter_apps_for_carousel()
+            if self.context.config.is_safe_mode():
+                logger.warning("System in SAFE MODE - loading SafeMode app only")
+                self.modules = {}
+                self.apps = self._load_safe_mode_app()
+            else:
+                self.modules = self._load_modules()
+                self.apps = self._load_apps()
+
+            self.enabled_apps = self._filter_apps_for_carousel()
             self._initialized = True
             logger.debug("All enabled apps initialized.")
         except Exception as e:
@@ -73,8 +77,14 @@ class AppManager:
             # "spotify": modules.spotify_module.SpotifyModule(),
         }
 
-    def _load_apps(self) -> List[Application]:
-        """Load and initialize the apps with dependency injection."""
+    def _load_safe_mode_app(self) -> List[Application]:
+        """Load the SafeMode app when system is in safe mode.
+
+        Returns a single-item list containing only the SafeMode app,
+        which displays error information and recovery instructions.
+
+        :return: List containing only the SafeMode application.
+        """
         callbacks: Dict[str, Callable] = {
             "toggle_display": self.toggle_display,
             "switch_next_app": self.switch_next_app,
@@ -84,16 +94,71 @@ class AppManager:
             "get_app_by_name": self.get_app_by_name,
             "get_module_by_name": self.get_module_by_name,
         }
-        return [
-            main_screen.MainScreen(self.context, callbacks),
-            gif_viewer.GifPlayer(self.context, callbacks),
-            pomodoro.Pomodoro(self.context, callbacks),
-        ]
+
+        try:
+            safe_mode_app = safe_mode.SafeMode(self.context, callbacks)
+            logger.info("SafeMode app loaded successfully")
+            return [safe_mode_app]
+        except Exception as e:
+            logger.critical(f"Failed to load SafeMode app: {e}")
+            logger.critical(
+                "Unable to load SafeMode app for critical error recovery. Exiting."
+            )
+            sys.exit(1)
+
+    def _load_apps(self) -> List[Application]:
+        """Load and initialize the apps with dependency injection, in configured order.
+
+        Apps are loaded in the order specified by the 'order' field in the configuration.
+        This provides a clean, declarative way to manage app ordering without relying
+        on hardcoded creation order.
+        """
+        callbacks: Dict[str, Callable] = {
+            "toggle_display": self.toggle_display,
+            "switch_next_app": self.switch_next_app,
+            "switch_prev_app": self.switch_prev_app,
+            "increase_brightness": self.increase_brightness,
+            "decrease_brightness": self.decrease_brightness,
+            "get_app_by_name": self.get_app_by_name,
+            "get_module_by_name": self.get_module_by_name,
+        }
+
+        app_registry: Dict[str, type] = {
+            "MainScreen": main_screen.MainScreen,
+            "GifPlayer": gif_viewer.GifPlayer,
+            "Pomodoro": pomodoro.Pomodoro,
+            "GameOfLife": life.GameOfLife,
+        }
+
+        app_names_in_order = self.context.config.get_app_names_in_order()
+
+        apps: List[Application] = []
+        for app_name in app_names_in_order:
+            if app_name in app_registry:
+                try:
+                    app_class = app_registry[app_name]
+                    app = app_class(self.context, callbacks)
+                    apps.append(app)
+                    logger.debug(f"Loaded app: {app_name}")
+                except Exception as e:
+                    logger.error(f"Failed to load app '{app_name}': {e}")
+            else:
+                app_config = self.context.config.get("Apps", app_name, default={})
+                if isinstance(app_config, dict) and app_config.get("enabled", False):
+                    logger.warning(
+                        f"App '{app_name}' is enabled but not found in app registry."
+                    )
+                else:
+                    logger.debug(
+                        f"App '{app_name}' not in registry (disabled, skipping)."
+                    )
+
+        return apps
 
     def _filter_apps_for_carousel(self) -> List[Application]:
         """Filter enabled applications for carousel display."""
         return [
-            app for app in self.enabled_apps if app.provides_horizontal_content is True
+            app for app in self.apps if app.enabled is True
         ]
 
     def get_app_by_name(self, app_name: str) -> Optional[Application]:
@@ -114,12 +179,12 @@ class AppManager:
         """Get the current application."""
         if not self._initialized:
             raise RuntimeError("AppManager not initialized. Call init_apps() first.")
-        return self.carousel[self.current_app_index]
+        return self.enabled_apps[self.current_app_index]
 
     def switch_next_app(self) -> bool:
         """Switch to the next application."""
         try:
-            self.current_app_index = (self.current_app_index + 1) % len(self.carousel)
+            self.current_app_index = (self.current_app_index + 1) % len(self.enabled_apps)
             logger.debug("Switched to next app.")
             return True
         except Exception as e:
@@ -130,7 +195,7 @@ class AppManager:
     def switch_prev_app(self) -> bool:
         """Switch to the previous application."""
         try:
-            self.current_app_index = (self.current_app_index - 1) % len(self.carousel)
+            self.current_app_index = (self.current_app_index - 1) % len(self.enabled_apps)
             logger.debug("Switched to previous app.")
             return True
         except Exception as e:

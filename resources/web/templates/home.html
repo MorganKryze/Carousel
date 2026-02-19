@@ -9,7 +9,16 @@
 <body>
     <div class="container">
         <h1>Carousel Configuration</h1>
-        
+
+        {% if is_safe_mode %}
+        <div class="safemode-banner">
+            <strong>⚠ SAFE MODE</strong> — You are editing the <em>broken</em> configuration.
+            Changes are staged in memory. When finished,
+            <a href="{{ url_for('safemode_page') }}">return to the recovery page</a>
+            and click <strong>Apply fixed config &amp; restart</strong>.
+        </div>
+        {% endif %}
+
         <div class="main-categories">
             <div class="category-card">
                 <h2>Apps</h2>

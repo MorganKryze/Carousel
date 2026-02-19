@@ -1,101 +1,100 @@
 import os
 import random
 from datetime import datetime, timedelta
+from typing import Callable, Dict
 
 import numpy as np
 from loguru import logger
 from PIL import Image, ImageDraw
 from scipy.signal import convolve2d
 
-from io.display_controller import DisplayController
-from core.config import Configuration
+from core.system_context import SystemContext
 from enums.encoder_input import EncoderInput
-from enums.variable_importance import Importance
+from enums.service_status import ServiceStatus
+from enums.tilt_input import TiltState
+from hardware.display_controller import DisplayController
+from models.application import Application
 from utils.path import PathTo
 
 
-class GameOfLifeScreen:
-    def __init__(self, modules, callbacks):
-        """
-        Initialize the GameOfLifeScreen with configuration, modules, and default actions.
-
-        Args:
-            config (Dict): Configuration settings.
-            modules (Dict): Dictionary of modules.
-            default_actions (Dict[str, Callable]): Dictionary of callback functions.
-        """
-        self.enabled = Configuration.read_variable(
-            "Apps", "GameOfLife", "enabled", Importance.REQUIRED
-        )
-        if not self.enabled:
-            logger.debug("[GameOfLife] GameOfLife is disabled.")
+class GameOfLife(Application):
+    def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
+        super().__init__(context, callbacks)
+        if self.status == ServiceStatus.DISABLED:
+            logger.info("Stopped initialization due to disabled status.")
             return
 
-        logger.debug("[GameOfLife] Initializing GameOfLifeScreen.")
-        self.modules = modules
-        self.callbacks = callbacks
         self.color = (255, 255, 255)
         self.initial_states = [
-            generate_random_state,
+            lambda: generate_random_state(self.context.display),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "centinal")
+                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "centinal"),
             ),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "achim_p144")
+                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "achim_p144"),
             ),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "pboj_p22")
+                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "pboj_p22"),
             ),
         ]
         self.current_state_index = 0
         self.state = self.initial_states[self.current_state_index]()
-        
-        logger.debug("[GameOfLife] GameOfLifeScreen initialized.")
 
-    def generate(self, is_horizontal: bool, input_status: EncoderInput) -> Image.Image:
+        self.status = ServiceStatus.RUNNING
+        logger.info("App running.")
+
+    def generate(self, tilt_state: TiltState, encoder_input: EncoderInput) -> Image:
         """
-        Generate the frame to draw on the LED matrix.
+        Generate the frame for the GameOfLifeScreen app.
 
-        Args:
-            is_horizontal (bool): Whether the LED matrix is horizontal.
-            input_status (InputStatus): The current input status.
-
-        Returns:
-            Image.Image: The generated frame.
+        :param tilt_state: TiltState: The current tilt state of the device.
+        :param encoder_input: EncoderInput: The status of the encoder input.
+        :return: Image: The generated frame.
         """
-        if input_status in [
-            EncoderInput.SINGLE_PRESS,
-            EncoderInput.LONG_PRESS,
-        ]:
-            if input_status == EncoderInput.LONG_PRESS:
-                self.current_state_index = (self.current_state_index + 1) % len(
-                    self.initial_states
-                )
-            self.state = self.initial_states[self.current_state_index]()
-            self.color = generate_new_color()
-        elif input_status == EncoderInput.INCREASE_CLOCKWISE:
-            self.callbacks["switch_next_app"]()
-        elif input_status == EncoderInput.DECREASE_COUNTERCLOCKWISE:
-            self.callbacks["switch_prev_app"]()
+        super().generate(tilt_state, encoder_input)
 
-        end_time = datetime.now() + timedelta(seconds=0.1)
+        try:
+            if encoder_input in [
+                EncoderInput.SINGLE_PRESS,
+                EncoderInput.LONG_PRESS,
+            ]:
+                if encoder_input == EncoderInput.LONG_PRESS:
+                    self.current_state_index = (self.current_state_index + 1) % len(
+                        self.initial_states
+                    )
+                self.state = self.initial_states[self.current_state_index]()
+                self.color = generate_new_color()
+            elif encoder_input == EncoderInput.INCREASE_CLOCKWISE:
+                self.callbacks["switch_next_app"]()
+            elif encoder_input == EncoderInput.DECREASE_COUNTERCLOCKWISE:
+                self.callbacks["switch_prev_app"]()
 
-        old_state = self.state
-        frame = Image.new("RGB", (DisplayController().led_cols, DisplayController().led_rows), (0, 0, 0))
-        draw = ImageDraw.Draw(frame)
+            end_time = datetime.now() + timedelta(seconds=0.1)
 
-        new_state = life_step(old_state)
-        for i in range(DisplayController().led_rows):
-            for j in range(DisplayController().led_cols):
-                if new_state[i][j] == 1:
-                    draw.point((j, i), fill=self.color)
+            old_state = self.state
+            frame = Image.new(
+                "RGB",
+                (self.context.display.led_cols, self.context.display.led_rows),
+                (0, 0, 0),
+            )
+            draw = ImageDraw.Draw(frame)
 
-        self.state = new_state
+            new_state = life_step(old_state)
+            for i in range(self.context.display.led_rows):
+                for j in range(self.context.display.led_cols):
+                    if new_state[i][j] == 1:
+                        draw.point((j, i), fill=self.color)
 
-        while datetime.now() < end_time:
-            pass
+            self.state = new_state
 
-        return frame
+            while datetime.now() < end_time:
+                pass
+
+            return frame
+        except Exception as e:
+            self.status = ServiceStatus.ERROR_APP_INTERNAL
+            logger.error(f"Error generating frame: {e}")
+            return self.generate_on_error()
 
 
 def life_step(state: np.ndarray) -> np.ndarray:
@@ -114,7 +113,9 @@ def life_step(state: np.ndarray) -> np.ndarray:
     return (neighbors_count == 3) | (state & (neighbors_count == 2))
 
 
-def get_num_neighbors(state: np.ndarray, i: int, j: int) -> int:
+def get_num_neighbors(
+    state: np.ndarray, i: int, j: int, display: DisplayController
+) -> int:
     """
     Get the number of live neighbors for a cell in the Game of Life.
 
@@ -132,22 +133,22 @@ def get_num_neighbors(state: np.ndarray, i: int, j: int) -> int:
         for dj in [-1, 0, 1]:
             if di == 0 and dj == 0:
                 continue
-            if state[(i + di) % DisplayController().led_rows][(j + dj) % DisplayController().led_cols] == 1:
+            if state[(i + di) % display.led_rows][(j + dj) % display.led_cols] == 1:
                 num_on += 1
 
     return num_on
 
 
-def generate_random_state() -> np.ndarray:
+def generate_random_state(display: DisplayController) -> np.ndarray:
     """
     Generate a random initial state for the Game of Life.
 
     Returns:
         np.ndarray: The random initial state.
     """
-    initial_state = np.zeros((DisplayController().led_rows, DisplayController().led_cols), dtype=int)
-    for i in range(DisplayController().led_rows):
-        for j in range(DisplayController().led_cols):
+    initial_state = np.zeros((display.led_rows, display.led_cols), dtype=int)
+    for i in range(display.led_rows):
+        for j in range(display.led_cols):
             initial_state[i][j] = random.randint(0, 1)
     return initial_state
 
@@ -190,4 +191,3 @@ def convert_image(location: str):
     np.save(
         location + ".npy", (image_array[0:height, 0:width, 0] // 255).astype("int32")
     )
-    

@@ -5,7 +5,6 @@ import spotipy
 from loguru import logger
 
 from core.config import Configuration
-from enums.variable_importance import Importance
 
 # Constants
 REQUESTS_TIMEOUT = 10
@@ -17,23 +16,22 @@ class SpotifyModule:
         """
         Initialize the SpotifyModule with the given configuration.
         """
-        self.enabled: bool = Configuration.read_variable(
-            "Modules", "Spotify", "enabled", Importance.REQUIRED
-        )
+        config = Configuration()
+        self.enabled: bool = config.get_from_module("Spotify", "enabled", required=True)
         if not self.enabled:
             logger.info("Disabled")
             return
 
         logger.debug("Initializing")
 
-        client_id: str = Configuration.read_variable(
-            "Modules", "Spotify", "client_id", Importance.REQUIRED
+        client_id: str = config.get_from_module(
+            "Spotify", "config", "client_id", required=True
         )
-        client_secret: str = Configuration.read_variable(
-            "Modules", "Spotify", "client_secret", Importance.REQUIRED
+        client_secret: str = config.get_from_module(
+            "Spotify", "config", "client_secret", required=True
         )
-        redirect_uri: str = Configuration.read_variable(
-            "Modules", "Spotify", "redirect_uri", Importance.REQUIRED
+        redirect_uri: str = config.get_from_module(
+            "Spotify", "config", "redirect_uri", required=True
         )
 
         try:

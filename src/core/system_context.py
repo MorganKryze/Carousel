@@ -41,8 +41,14 @@ class SystemContext:
         logger.info("Initializing hardware components...")
         self.display = DisplayController(use_emulator=use_emulator)
 
+        natural_rotation = self.config.get(
+            "System", "Encoder", "natural_rotation", default=False
+        )
+
         if use_emulator:
-            self.input_controller = KeyboardInputController()
+            self.input_controller = KeyboardInputController(
+                natural_rotation=natural_rotation
+            )
         else:
             self.input_controller = GPIOInputController(self.config)
 
@@ -59,4 +65,3 @@ class SystemContext:
     def is_initialized(cls) -> bool:
         """Check if context has been initialized."""
         return cls._initialized
-

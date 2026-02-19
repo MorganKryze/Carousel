@@ -4,7 +4,7 @@ from datetime import datetime
 
 from loguru import logger
 
-from core.config import get_version_from_pyproject, get_addresses
+from core.config_helpers import get_version_from_pyproject, get_addresses
 from utils.path import PathTo
 
 

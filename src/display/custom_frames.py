@@ -12,6 +12,7 @@ WHITE = (255, 255, 255)
 RED = (255, 0, 0)
 GRAY = (128, 128, 128)
 GREEN = (0, 255, 0)
+ORANGE = (255, 165, 0)
 
 
 class CustomFrames:
@@ -39,28 +40,28 @@ class CustomFrames:
         """
         frame = cls.black()
         draw = ImageDraw.Draw(frame)
-        bar_width = cls.led_cols - 30
-        bar_height = 5
-        bar_x = (cls.led_cols - bar_width) // 2
+
+        text = "Carousel"
+        bbox = draw.textbbox((0, 0), text, font=cls.font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        text_x = (cls.led_cols - text_width) // 2
+        text_y = (cls.led_rows - text_height) // 2 - 3
+        draw.text((text_x, text_y), text, fill=WHITE, font=cls.font)
+
+        bar_width = cls.led_cols - 1
+        bar_x = 0
+        bar_y = cls.led_rows - 1
         filled_width = int((percentage / 100) * bar_width)
+
         draw.rectangle(
             (
                 bar_x,
-                cls.led_rows // 2 - bar_height // 2,
+                bar_y,
                 bar_x + filled_width,
-                cls.led_rows // 2 + bar_height // 2,
+                bar_y,
             ),
-            fill=GREEN,
-        )
-        draw.rectangle(
-            (
-                bar_x,
-                cls.led_rows // 2 - bar_height // 2,
-                bar_x + bar_width,
-                cls.led_rows // 2 + bar_height // 2,
-            ),
-            outline=GRAY,
-            width=1,
+            fill=WHITE,
         )
         return frame
 
@@ -90,7 +91,6 @@ class CustomFrames:
             )
             return cls.black()
 
-        error_title = f"[{cls.__name__}]"
         error_status_description = {
             ServiceStatus.DISABLED: "The app is disabled.",
             ServiceStatus.ERROR_NO_INTERNET: "No Internet connection.",
@@ -106,22 +106,37 @@ class CustomFrames:
         )
         frame = cls.black()
         draw = ImageDraw.Draw(frame)
-        draw.text((5, 5), error_title, fill=RED, font=cls.font)
-        draw.text((5, 15), error_description, fill=RED, font=cls.font)
 
-        # Get text dimensions using textbbox (Pillow 8.0.0+)
-        bbox = draw.textbbox((0, 0), error_description, font=cls.font)
-        text_width = bbox[2] - bbox[0]
+        lines = []
+        words = error_description.split()
+        current_line = ""
 
-        draw.text(
-            (
-                cls.led_cols // 2 - text_width // 2,
-                cls.led_rows // 2,
-            ),
-            error_description,
-            fill=RED,
-            font=cls.font,
-        )
+        for word in words:
+            test_line = f"{current_line} {word}".strip()
+            bbox = draw.textbbox((0, 0), test_line, font=cls.font)
+            text_width = bbox[2] - bbox[0]
+
+            if text_width <= cls.led_cols - 4:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        line_height = 6
+        total_height = len(lines) * line_height
+        start_y = max(2, (cls.led_rows - total_height) // 2)
+
+        for i, line in enumerate(lines):
+            bbox = draw.textbbox((0, 0), line, font=cls.font)
+            text_width = bbox[2] - bbox[0]
+            x = (cls.led_cols - text_width) // 2
+            y = start_y + i * line_height
+            draw.text((x, y), line, fill=RED, font=cls.font)
+
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
         return frame
 
@@ -147,4 +162,42 @@ class CustomFrames:
 
         draw.text((x, y), message, fill=RED, font=cls.font)
         draw.rectangle((0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=RED, width=1)
+        return frame
+
+    @classmethod
+    def safe_mode(cls) -> Image:
+        """
+        Generate a safe mode frame with recovery instructions.
+
+        :return: Safe mode information frame.
+        """
+        frame = cls.black()
+        draw = ImageDraw.Draw(frame)
+
+        title = "SAFE MODE"
+        bbox = draw.textbbox((0, 0), title, font=cls.font)
+        title_width = bbox[2] - bbox[0]
+        title_x = (cls.led_cols - title_width) // 2
+        draw.text((title_x, 2), title, fill=ORANGE, font=cls.font)
+
+        instruction = "Open setup"
+        bbox = draw.textbbox((0, 0), instruction, font=cls.font)
+        instr_width = bbox[2] - bbox[0]
+        instr_height = bbox[3] - bbox[1]
+        instr_x = (cls.led_cols - instr_width) // 2
+        instr_y = (cls.led_rows - instr_height) // 2
+        draw.text((instr_x, instr_y), instruction, fill=WHITE, font=cls.font)
+
+        instruction2 = "website to fix."
+
+        bbox2 = draw.textbbox((0, 0), instruction2, font=cls.font)
+        instr2_width = bbox2[2] - bbox2[0]
+        instr2_x = (cls.led_cols - instr2_width) // 2
+        instr2_y = instr_y + instr_height + 4
+        draw.text((instr2_x, instr2_y), instruction2, fill=WHITE, font=cls.font)
+
+        draw.rectangle(
+            (0, 0, cls.led_cols - 1, cls.led_rows - 1), outline=ORANGE, width=1
+        )
+
         return frame

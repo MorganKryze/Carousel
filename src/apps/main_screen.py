@@ -39,9 +39,7 @@ class MainScreen(Application):
     def __init__(self, context: SystemContext, callbacks: Dict[str, Callable]):
         super().__init__(context, callbacks)
         if self.status == ServiceStatus.DISABLED:
-            logger.info(
-                "Stopped initialization due to disabled status."
-            )
+            logger.info("Stopped initialization due to disabled status.")
             return
 
         self.use_24_hour = self.context.config.get_from_app_config(

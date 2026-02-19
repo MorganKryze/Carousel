@@ -32,7 +32,7 @@ System:
     brightness: 100
     disable_hardware_pulsing: false
     hardware_mapping: regular
-    refresh_rate: 0.05
+    target_fps: 12
   Tilt-switch:
     gpio: 19
     bounce_time: 0.25
@@ -43,6 +43,7 @@ System:
     bounce_time: 0.05
     double_press_window: 0.3
     long_press_window: 0.5
+    natural_rotation: true
 
 # ------------------ Module Configuration ------------------
 # Modules are the toolboxes used by applications. Disabled modules will result in the
@@ -50,24 +51,33 @@ System:
 
 Modules:
   Notifications:
-    name: Notifications
-    description: Provides notification services to applications.
-    app_white_list:
-    websocket_url:
-    retry_delay_on_error: 1000
+    enabled: false
+    meta:
+      name: Notifications
+      description: Provides notification services to applications.
+    config:
+      app_white_list:
+      websocket_url:
+      retry_delay_on_error: 1000
   Weather:
-    name: Weather
-    description: Provides weather information to applications.
-    token:
-    latitude:
-    longitude:
-    temperature_unit: celcius
+    enabled: false
+    meta:
+      name: Weather
+      description: Provides weather information to applications.
+    config:
+      token:
+      latitude:
+      longitude:
+      temperature_unit: celcius
   Spotify:
-    name: Spotify
-    description: Provides Spotify integration to applications.
-    client_id:
-    client_secret:
-    redirect_uri:
+    enabled: false
+    meta:
+      name: Spotify
+      description: Provides Spotify integration to applications.
+    config:
+      client_id:
+      client_secret:
+      redirect_uri:
 
 # -------------------- Apps Configuration ------------------
 # Apps are the applications that are available to the user. Disabled apps will not be
@@ -76,6 +86,7 @@ Modules:
 Apps:
   MainScreen:
     enabled: true
+    order: 1
     meta:
       name: Main Screen
       description: The main screen of the matrix, displaying time, date, and other information.
@@ -86,8 +97,20 @@ Apps:
       date_format: DD-MM
       cycle_duration_in_seconds: 20
     dependencies:
+  GifPlayer:
+    enabled: true
+    order: 2
+    meta:
+      name: GIF Player
+      description: Displays animated GIFs on the matrix.
+      provides_horizontal_content: true
+      provides_vertical_content: false
+    config:
+      play_limit: 5
+    dependencies:
   Pomodoro:
     enabled: true
+    order: 3
     meta:
       name: Pomodoro
       description: A productivity timer that helps you focus on tasks.
@@ -98,18 +121,9 @@ Apps:
       break_duration_in_minutes: 5
       long_break_duration_in_minutes: 15
     dependencies:
-  GifPlayer:
-    enabled: true
-    meta:
-      name: GIF Player
-      description: Displays animated GIFs on the matrix.
-      provides_horizontal_content: true
-      provides_vertical_content: false
-    config:
-      play_limit: 5
-    dependencies:
   GameOfLife:
-    enabled: false
+    enabled: true
+    order: 4
     meta:
       name: Game of Life
       description: A cellular automaton simulation that displays patterns on the matrix.
@@ -119,6 +133,7 @@ Apps:
     dependencies:
   Spotify:
     enabled: false
+    order: 5
     meta:
       name: Spotify
       description: Displays the current playing track from Spotify.
@@ -129,6 +144,7 @@ Apps:
       - Spotify
   Notion:
     enabled: false
+    order: 6
     meta:
       name: Notion
       description: Displays information from Notion databases.
@@ -140,6 +156,7 @@ Apps:
     dependencies:
   Youtube:
     enabled: false
+    order: 7
     meta:
       name: YouTube
       description: Displays the latest videos from a YouTube channel.
@@ -150,6 +167,7 @@ Apps:
     dependencies:
   Pushbullet:
     enabled: false
+    order: 8
     meta:
       name: Pushbullet
       description: Displays notifications from Pushbullet.
@@ -160,6 +178,7 @@ Apps:
       - Notifications
   Weather:
     enabled: false
+    order: 9
     meta:
       name: Weather
       description: Displays the current weather conditions.

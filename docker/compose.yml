@@ -20,12 +20,14 @@ services:
   
   watchtower:
     container_name: watchtower
-    image: containrrr/watchtower:latest
+    image: nickfedor/watchtower:latest
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    command:
-      - '--interval'
-      - '86400'
-      - '--label-enable'
-      - '--cleanup'
+    environment:
+      TZ: Europe/Paris
+      WATCHTOWER_CLEANUP: true
+      WATCHTOWER_LABEL_ENABLE: true
+      WATCHTOWER_UPDATE_ON_START: true
+      # SPRING For 4 AM daily update checks
+      WATCHTOWER_SCHEDULE: 0 0 4 * * *
