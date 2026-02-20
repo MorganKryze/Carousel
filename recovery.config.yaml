@@ -30,3 +30,11 @@ System:
     double_press_window: 0.3
     long_press_window: 0.5
     natural_rotation: true
+  Network:
+    ssid:
+    password:
+    wpa_level: 0
+    hotspot_ssid: Carousel
+    hotspot_password:
+    max_attempts: 3
+    interface: wlan0

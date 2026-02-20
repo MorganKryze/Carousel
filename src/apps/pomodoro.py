@@ -91,7 +91,9 @@ class Pomodoro(Application):
         :return: Image: The generated frame.
         """
         super().generate(tilt_state, encoder_input)
+        # TODO: REMOVE AFTER TESTING
         self.context.config.critical_exit("test")
+        # TODO: REMOVE AFTER TESTING
         try:
             if encoder_input is EncoderInput.SINGLE_PRESS:
                 self.active = not self.active

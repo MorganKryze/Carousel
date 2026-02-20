@@ -48,6 +48,14 @@ If you may confider editing the configuration manually, please be aware of the f
   - `gpio_clk` (integer, ex: `5`): The GPIO pin number used for the clock signal of the rotary encoder.
   - `gpio_dt` (integer, ex: `6`): The GPIO pin number used for the data signal of the rotary encoder.
   - `gpio_sw` (integer, ex: `13`): The GPIO pin number used for the switch signal of the rotary encoder.
+- `Network` (object): Contains WiFi client credentials and hotspot fallback settings.
+  - `ssid` (string, ex: `MyHomeWiFi`): WiFi network name to connect to on boot.
+  - `password` (string, ex: `super-secret-pass`): WiFi password for `ssid`.
+  - `wpa_level` (integer, values: `0`, `1`, `2`): Hotspot security level. `0` creates an open hotspot, values above `0` use password protection.
+  - `hotspot_ssid` (string, ex: `Carousel-Recovery`): Local hotspot SSID used when WiFi connection fails.
+  - `hotspot_password` (string, optional): Local hotspot password (minimum 8 chars). Required when `wpa_level` is `1` or `2`.
+  - `max_attempts` (integer, ex: `3`): Number of WiFi connection retries before hotspot fallback.
+  - `interface` (string, ex: `wlan0`): Wireless interface used for WiFi and hotspot commands.
 
 ### Modules
 
@@ -176,6 +184,14 @@ System:
     gpio_clk: 5
     gpio_dt: 6
     gpio_sw: 13
+  Network:
+    ssid:
+    password:
+    wpa_level: 0
+    hotspot_ssid: Carousel-Recovery
+    hotspot_password:
+    max_attempts: 3
+    interface: wlan0
 
 # ------------------ Module Configuration ------------------
 # Modules are the toolboxes used by applications. Disabled modules will result in the

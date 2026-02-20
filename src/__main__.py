@@ -3,7 +3,9 @@ import asyncio
 
 from loguru import logger
 
+from core.config import Configuration
 from core.game_loop import GameLoop
+from core.network_manager import NetworkManager
 from display.animations import Animations
 from utils.logs import start_logger
 from utils.path import PathTo
@@ -14,14 +16,35 @@ async def async_main(use_emulator: bool = False) -> None:
     Main async entry point.
     Orchestrates initialization, loading animation, and game loop execution.
     """
+
+    if not use_emulator:
+        logger.info("Network manager enabled (hardware mode)")
+        network_manager = NetworkManager()
+        if Configuration().is_recovery_mode():
+            logger.warning("Recovery mode detected: forcing local hotspot for recovery")
+            network_ready = network_manager.init_connectivity(force_hotspot=True)
+        else:
+            network_ready = network_manager.init_connectivity(force_hotspot=False)
+
+        if network_ready:
+            logger.info("Network state: connectivity setup completed")
+        else:
+            logger.warning(
+                "Network state: connectivity setup failed or unavailable; "
+                "continuing startup"
+            )
+    else:
+        logger.warning("Network manager disabled (emulator mode)")
+
     game_loop = GameLoop(use_emulator)
 
     animations = Animations()
 
     if use_emulator:
         logger.warning(
-            "EMULATOR MODE: About to start display rendering. "
-            "You will see 'RuntimeError: This event loop is already running' - this is expected and can be safely ignored."
+            "About to start display rendering. You will see 'RuntimeError: "
+            "This event loop is already running' - "
+            "this is expected and can be safely ignored."
         )
 
     await animations.loading_animation()
