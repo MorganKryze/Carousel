@@ -54,12 +54,21 @@ class MatrixConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    led_rows: int
-    led_cols: int
-    brightness: int
+    led_rows: int = Field(ge=16)
+    led_cols: int = Field(ge=16)
+    brightness: int = Field(ge=0, le=100)
     disable_hardware_pulsing: bool
-    hardware_mapping: str
-    target_fps: int
+    hardware_mapping: Literal["regular", "adafruit-hat"]
+    target_fps: int = Field(ge=1)
+
+    @field_validator("led_rows", "led_cols")
+    @classmethod
+    def validate_positive_int(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("must be a positive integer")
+        if value % 16 != 0:
+            raise ValueError("must be a positive multiple of 16")
+        return value
 
 
 class TiltSwitchConfig(BaseModel):
@@ -67,8 +76,8 @@ class TiltSwitchConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gpio: int
-    bounce_time: float
+    gpio: int = Field(ge=0, le=27)
+    bounce_time: float = Field(ge=0)
 
 
 class EncoderConfig(BaseModel):
@@ -76,13 +85,20 @@ class EncoderConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    gpio_clk: int
-    gpio_dt: int
-    gpio_sw: int
-    bounce_time: float
-    double_press_window: float
-    long_press_window: float
+    gpio_clk: int = Field(ge=0, le=27)
+    gpio_dt: int = Field(ge=0, le=27)
+    gpio_sw: int = Field(ge=0, le=27)
+    bounce_time: float = Field(ge=0)
+    double_press_window: float = Field(gt=0)
+    long_press_window: float = Field(gt=0)
     natural_rotation: bool
+
+    @model_validator(mode="after")
+    def validate_encoder_gpio_uniqueness(self):
+        gpio_values = {self.gpio_clk, self.gpio_dt, self.gpio_sw}
+        if len(gpio_values) != 3:
+            raise ValueError("Encoder GPIO pins must be distinct")
+        return self
 
 
 class NetworkConfig(BaseModel):
@@ -93,7 +109,7 @@ class NetworkConfig(BaseModel):
     ssid: Optional[str] = None
     password: Optional[str] = None
     wpa_level: Literal[0, 1, 2] = 0
-    hotspot_ssid: str = Field(default="Carousel", min_length=1)
+    hotspot_ssid: str = Field(default="Carousel", min_length=1, max_length=32)
     hotspot_password: Optional[str] = None
     max_attempts: int = Field(default=3, ge=1)
     interface: str = Field(default="wlan0", min_length=1)
@@ -108,8 +124,18 @@ class NetworkConfig(BaseModel):
             return stripped or None
         return value
 
+    @field_validator("hotspot_ssid", "interface", mode="before")
+    @classmethod
+    def normalize_required_strings(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip()
+
     @model_validator(mode="after")
     def validate_hotspot_security(self):
+        if bool(self.ssid) != bool(self.password):
+            raise ValueError("ssid and password must both be set or both be empty")
+
         if self.wpa_level > 0:
             if not self.hotspot_password:
                 raise ValueError(
@@ -138,8 +164,15 @@ class ModuleMeta(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str
-    description: str
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+
+    @field_validator("name", "description", mode="before")
+    @classmethod
+    def normalize_strings(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip()
 
 
 class ModuleConfig(BaseModel):
@@ -157,10 +190,25 @@ class AppMeta(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str
-    description: str
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=1)
     provides_horizontal_content: bool
     provides_vertical_content: bool
+
+    @field_validator("name", "description", mode="before")
+    @classmethod
+    def normalize_strings(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip()
+
+    @model_validator(mode="after")
+    def validate_orientations(self):
+        if not self.provides_horizontal_content and not self.provides_vertical_content:
+            raise ValueError(
+                "At least one of provides_horizontal_content or provides_vertical_content must be true"
+            )
+        return self
 
 
 class AppConfig(BaseModel):
@@ -169,10 +217,30 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
-    order: int
+    order: int = Field(ge=1)
     meta: AppMeta
     config: Optional[Dict[str, Any]] = None
     dependencies: Optional[List[str]] = None
+
+    @field_validator("dependencies", mode="after")
+    @classmethod
+    def validate_dependencies(cls, value):
+        if value is None:
+            return value
+
+        cleaned = []
+        for item in value:
+            if not isinstance(item, str):
+                raise ValueError("dependencies must contain only strings")
+            dep = item.strip()
+            if not dep:
+                raise ValueError("dependencies cannot contain empty values")
+            cleaned.append(dep)
+
+        if len(cleaned) != len(set(cleaned)):
+            raise ValueError("dependencies cannot contain duplicates")
+
+        return cleaned
 
 
 class ConfigRoot(BaseModel):
@@ -182,5 +250,32 @@ class ConfigRoot(BaseModel):
 
     Metadata: Metadata
     System: SystemConfig
-    Modules: Dict[str, ModuleConfig] = {}
-    Apps: Dict[str, AppConfig] = {}
+    Modules: Dict[str, ModuleConfig] = Field(default_factory=dict)
+    Apps: Dict[str, AppConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_root_consistency(self):
+        for module_key in self.Modules:
+            if not module_key.strip():
+                raise ValueError("Modules cannot contain empty names")
+
+        app_order_map: Dict[int, str] = {}
+        for app_key, app_config in self.Apps.items():
+            if not app_key.strip():
+                raise ValueError("Apps cannot contain empty names")
+
+            if app_config.order in app_order_map:
+                raise ValueError(
+                    f"Duplicate app order detected: {app_config.order} "
+                    f"({app_order_map[app_config.order]} and {app_key})"
+                )
+            app_order_map[app_config.order] = app_key
+
+            if app_config.dependencies:
+                for dependency in app_config.dependencies:
+                    if dependency not in self.Modules:
+                        raise ValueError(
+                            f"App '{app_key}' has unknown dependency '{dependency}'"
+                        )
+
+        return self
