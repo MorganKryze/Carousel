@@ -21,6 +21,7 @@ dependencies = [
     "requests>=2.32.4",
     "spotipy>=2.25.1",
     "scipy>=1.16.1",
+    "waitress>=3.0.2",
     "websocket>=0.2.1",
     "yfinance>=0.2.65",
 

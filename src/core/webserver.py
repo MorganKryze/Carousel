@@ -254,10 +254,38 @@ class WebServer:
             return self.is_connected
 
     def start(self, port: int, debug: bool) -> threading.Thread:
-        """Start the web server in a background daemon thread."""
+        """Start the web server in a background daemon thread.
+
+        Uses Waitress for production runtime and Flask's development server only
+        when debug mode is explicitly enabled.
+        """
 
         def run_server():
-            self.app.run(host="0.0.0.0", port=port, debug=debug, use_reloader=False)
+            host = "0.0.0.0"
+            if debug:
+                logger.warning("Starting Flask development server (debug mode enabled)")
+                self.app.run(host=host, port=port, debug=True, use_reloader=False)
+                return
+
+            try:
+                from waitress import serve
+
+                logger.info("Starting Waitress production server")
+                serve(
+                    self.app,
+                    host=host,
+                    port=port,
+                    threads=2,
+                    connection_limit=20,
+                    channel_timeout=30,
+                    cleanup_interval=15,
+                )
+            except ModuleNotFoundError:
+                logger.error(
+                    "Waitress is not installed; falling back to Flask development server. "
+                    "Install dependencies to use production server mode."
+                )
+                self.app.run(host=host, port=port, debug=False, use_reloader=False)
 
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
