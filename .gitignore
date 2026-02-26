@@ -27,3 +27,6 @@ main.sln
 config.yaml
 temp.config.yaml
 configs/
+
+# Claude
+.claude/settings.local.json
