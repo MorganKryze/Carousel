@@ -3,6 +3,23 @@
   "hooks": {
     "PreToolUse": [
       {
+        "matcher": "Read|Edit|Write|Glob|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/enforce-project-boundary.sh",
+            "timeout": 5,
+            "statusMessage": "Checking file access boundary..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-secrets.sh",
+            "timeout": 5,
+            "statusMessage": "Checking for secret files..."
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
@@ -10,6 +27,23 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/protect-config.sh",
             "timeout": 5,
             "statusMessage": "Checking protected files..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-git-operations.sh",
+            "timeout": 5,
+            "statusMessage": "Checking git operation safety..."
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/guard-destructive-commands.sh",
+            "timeout": 5,
+            "statusMessage": "Checking command safety..."
           }
         ]
       }
