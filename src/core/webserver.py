@@ -1,3 +1,4 @@
+import os
 import socket
 import subprocess
 import threading
@@ -27,8 +28,8 @@ class WebServer:
         self.config_manager = Configuration()
         self.app = Flask(
             __name__,
-            template_folder=PathTo.TEMPLATES_FOLDER,
-            static_folder=PathTo.STATIC_FOLDER,
+            template_folder=os.path.join(PathTo.base_directory, PathTo.TEMPLATES_FOLDER),
+            static_folder=os.path.join(PathTo.base_directory, PathTo.STATIC_FOLDER),
         )
 
         # In recovery mode: hold the broken config for editing.  None = not in recovery mode

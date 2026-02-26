@@ -17,8 +17,8 @@ class PathTo:
     LIFE_PATTERNS_FOLDER: str = os.path.join(RESOURCES_FOLDER, "life_patterns/")
     MAIN_SCREEN_BACKGROUND_FOLDER: str = os.path.join(RESOURCES_FOLDER, "main_screen/")
     FONT_FILE: str = os.path.join(RESOURCES_FOLDER, "fonts/tiny.otf")
-    TEMPLATES_FOLDER: str = "../resources/web/templates"
-    STATIC_FOLDER: str = "../resources/web/static"
+    TEMPLATES_FOLDER: str = os.path.join(RESOURCES_FOLDER, "web/templates")
+    STATIC_FOLDER: str = os.path.join(RESOURCES_FOLDER, "web/static")
 
     @classmethod
     def set_base_directory(cls) -> None:
