@@ -50,3 +50,13 @@ cad/
 configs/
 docs/
 scripts/
+data/
+*.npy
+
+# Documentation
+README.md
+LICENSE
+CLAUDE.md
+
+# Dev only
+emulator_config.json

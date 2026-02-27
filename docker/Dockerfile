@@ -2,9 +2,6 @@ FROM python:3.11-slim-trixie
 
 WORKDIR /app
 
-# Copy dependency files first for better layer caching
-COPY pyproject.toml ./
-
 # Copy all application code
 COPY . .
 
@@ -56,9 +53,6 @@ RUN apt-get update && \
 
 # Set capabilities for hardware access and real-time priority
 RUN setcap 'cap_sys_rawio,cap_sys_admin,cap_ipc_lock,cap_sys_nice=eip' /usr/local/bin/python3.11
-
-# Expose Flask port (can be removed if not using Flask)
-EXPOSE 5000
 
 # Default command to run the project
 CMD ["python", "src"]
