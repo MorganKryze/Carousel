@@ -146,10 +146,11 @@ class GifPlayer(Application):
         logger.debug("Loading GIFs.")
         try:
             result = []
-            for filename in os.listdir(PathTo.GIF_FOLDER):
-                if filename.endswith(".gif"):
-                    logger.debug(f"Loading GIF: {filename}")
-                    result.append(Image.open(os.path.join(PathTo.GIF_FOLDER, filename)))
+            for filepath in PathTo.list_assets(
+                PathTo.DEFAULT_GIF_FOLDER, PathTo.USER_GIF_FOLDER, ".gif"
+            ):
+                logger.debug(f"Loading GIF: {os.path.basename(filepath)}")
+                result.append(Image.open(filepath))
 
             logger.info(f"All {len(result)} GIFs loaded successfully.")
             return result

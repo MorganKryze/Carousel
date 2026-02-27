@@ -1,9 +1,11 @@
+import os
 from PIL import Image, ImageFont, ImageDraw
 import numpy as np
 import yfinance as yf
 import time
 import threading
 from queue import LifoQueue
+from utils.path import PathTo
 
 white = (255,255,255)
 red = (255,0,0)
@@ -14,8 +16,10 @@ down_arrow = np.asarray([[1,1,1,1,1],[0,1,1,1,0],[0,0,1,0,0]])
 class StocksVerticalScreen:
     def __init__(self, config, modules, default_actions):
         self.ticker_symbols = ['DOGE-USD', 'GME', 'AMC', 'TSM', 'AMD']
-        self.tiny_font = ImageFont.truetype("./src/fonts/tiny.otf", 5)
-        self.bg = Image.open('apps/res/tothemoon_darker.png').convert('RGB')
+        self.tiny_font = ImageFont.truetype(PathTo.FONT_FILE, 5)
+        self.bg = Image.open(
+            os.path.join(PathTo.DEFAULT_STOCKS_FOLDER, "tothemoon_darker.png")
+        ).convert('RGB')
         self.queue = LifoQueue()
         self.thread = threading.Thread(target=generateFrameAsync, 
                         args=(self.queue, self.ticker_symbols, self.tiny_font, self.bg))

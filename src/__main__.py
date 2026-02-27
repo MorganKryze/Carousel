@@ -83,6 +83,7 @@ def main() -> None:
 
     PathTo.set_base_directory()
     PathTo.add_library_to_path()
+    PathTo.ensure_data_directories()
 
     log_level = "DEBUG" if args.debug else "WARNING"
     start_logger(file_level="DEBUG", console_level=log_level)

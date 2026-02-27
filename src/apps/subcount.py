@@ -1,3 +1,4 @@
+import os
 import time
 import urllib.request
 import json
@@ -6,13 +7,16 @@ import threading
 from enums.encoder_input import EncoderInput
 from queue import LifoQueue
 from ast import literal_eval
+from utils.path import PathTo
 
 class SubcountScreen:
     def __init__(self, config, modules, default_actions):
         self.modules = modules
         self.default_actions = default_actions
-        self.bg = Image.open('apps_v2/res/pixel_logo_flipped.png').convert('RGB')
-        self.font = ImageFont.truetype("./src/apps/res/fonts/tiny.otf", 5)
+        self.bg = Image.open(
+            os.path.join(PathTo.DEFAULT_SUBCOUNT_FOLDER, "pixel_logo_flipped.png")
+        ).convert('RGB')
+        self.font = ImageFont.truetype(PathTo.FONT_FILE, 5)
         self.queue = LifoQueue()
 
         self.canvas_width = config.getint('System', 'canvas_width', fallback=64)

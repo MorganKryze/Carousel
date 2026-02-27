@@ -6,6 +6,7 @@
 __pycache__/
 *.lock
 .python-version
+*.npy
 
 # KiCad
 KiCad/Rpi_matrix_adapter/Rpi_matrix_adapter-backups/*
@@ -27,6 +28,10 @@ main.sln
 config.yaml
 temp.config.yaml
 configs/
+
+# User data (volume-mounted in Docker, populated at runtime)
+data/
+!data/.gitkeep
 
 # Claude
 .claude/settings.local.json

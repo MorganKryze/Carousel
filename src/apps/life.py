@@ -28,13 +28,13 @@ class GameOfLife(Application):
         self.initial_states = [
             lambda: generate_random_state(self.context.display),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "centinal"),
+                os.path.join(PathTo.DEFAULT_LIFE_PATTERNS_FOLDER, "centinal"),
             ),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "achim_p144"),
+                os.path.join(PathTo.DEFAULT_LIFE_PATTERNS_FOLDER, "achim_p144"),
             ),
             lambda: fetch_pattern(
-                os.path.join(PathTo.LIFE_PATTERNS_FOLDER, "pboj_p22"),
+                os.path.join(PathTo.DEFAULT_LIFE_PATTERNS_FOLDER, "pboj_p22"),
             ),
         ]
         self.current_state_index = 0

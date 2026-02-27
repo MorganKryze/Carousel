@@ -4,12 +4,13 @@ from enums.encoder_input import EncoderInput
 from datetime import datetime
 from dateutil import tz
 from ast import literal_eval
+from utils.path import PathTo
 
 class WeatherScreen:
     def __init__(self, config, modules, default_actions):
         self.modules = modules
         self.default_actions = default_actions
-        self.font = ImageFont.truetype("./src/fonts/tiny.otf", 5)
+        self.font = ImageFont.truetype(PathTo.FONT_FILE, 5)
 
         self.canvas_width = config.getint('System', 'canvas_width', fallback=64)
         self.canvas_height = config.getint('System', 'canvas_height', fallback=32)
@@ -78,10 +79,12 @@ class WeatherScreen:
 
 def generateIconMap():
     icon_map = dict()
-    for _, _, files in os.walk("apps_v2/res/weather"):
+    for _, _, files in os.walk(PathTo.DEFAULT_WEATHER_FOLDER):
         for file in files:
             if file.endswith('.png'):
-                icon_map[file[:-4]] = Image.open('apps_v2/res/weather/' + file).convert("RGB")
+                icon_map[file[:-4]] = Image.open(
+                    os.path.join(PathTo.DEFAULT_WEATHER_FOLDER, file)
+                ).convert("RGB")
     return icon_map
 
 def convertToTwoDigits(num):

@@ -12,6 +12,7 @@ services:
     volumes:
       - ../configs:/app/configs
       - ../logs:/app/logs
+      - ../data:/app/data
     network_mode: host
     labels:
       com.centurylinklabs.watchtower.enable: true

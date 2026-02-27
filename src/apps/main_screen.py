@@ -73,15 +73,15 @@ class MainScreen(Application):
         try:
             self.backgrounds = {
                 "sakura": Image.open(
-                    os.path.join(PathTo.MAIN_SCREEN_BACKGROUND_FOLDER, "sakura-bg.png")
+                    os.path.join(PathTo.DEFAULT_MAIN_SCREEN_FOLDER, "sakura-bg.png")
                 ).convert("RGB"),
                 "cloud": Image.open(
                     os.path.join(
-                        PathTo.MAIN_SCREEN_BACKGROUND_FOLDER, "cloud-bg-clear.png"
+                        PathTo.DEFAULT_MAIN_SCREEN_FOLDER, "cloud-bg-clear.png"
                     )
                 ).convert("RGBA"),
                 "forest": Image.open(
-                    os.path.join(PathTo.MAIN_SCREEN_BACKGROUND_FOLDER, "forest-bg.png")
+                    os.path.join(PathTo.DEFAULT_MAIN_SCREEN_FOLDER, "forest-bg.png")
                 ).convert("RGB"),
             }
         except Exception as e:

@@ -3,13 +3,14 @@ import requests
 from io import BytesIO
 from enums.encoder_input import EncoderInput
 from ast import literal_eval
+from utils.path import PathTo
 
 class SpotifyScreen:
     def __init__(self, config, modules, default_actions):
         self.modules = modules
         self.default_actions = default_actions
 
-        self.font = ImageFont.truetype("./src/apps/res/fonts/tiny.otf", 5)
+        self.font = ImageFont.truetype(PathTo.FONT_FILE, 5)
 
         self.canvas_width = config.getint('System', 'canvas_width', fallback=64)
         self.canvas_height = config.getint('System', 'canvas_height', fallback=32)

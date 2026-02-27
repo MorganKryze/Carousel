@@ -7,13 +7,14 @@ import requests, json
 from datetime import date
 from datetime import timedelta
 from ast import literal_eval
+from utils.path import PathTo
 
 class NotionScreen:
     def __init__(self, config, modules, default_actions):
         self.modules = modules
         self.default_actions = default_actions
 
-        self.font = ImageFont.truetype("./src/apps/res/fonts/tiny.otf", 5)
+        self.font = ImageFont.truetype(PathTo.FONT_FILE, 5)
 
         self.queue = LifoQueue()
         self.tasks = None
