@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Carousel — Apps{% endblock %}
+
+{% block content %}
+<h1 class="page-title">{% if active_category %}{{ active_category }}{% else %}All Apps{% endif %}</h1>
+<p class="page-subtitle">Browse and configure your Carousel applications.</p>
+
+<div class="search-bar">
+    <input type="text" id="app-search" placeholder="Search apps..." autocomplete="off">
+</div>
+
+<div class="card-grid" id="app-grid">
+    {% for app in apps %}
+    {% include "partials/app_card.html" %}
+    {% endfor %}
+</div>
+
+{% if not apps %}
+<p style="color: var(--color-muted); margin-top: 2rem;">No apps found in this category.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('app-search').addEventListener('input', function() {
+    var query = this.value.toLowerCase();
+    document.querySelectorAll('#app-grid .card').forEach(function(card) {
+        var name = (card.dataset.name || '').toLowerCase();
+        card.style.display = name.indexOf(query) !== -1 ? '' : 'none';
+    });
+});
+</script>
+{% endblock %}

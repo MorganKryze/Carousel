@@ -6,12 +6,13 @@ from loguru import logger
 from core.config import Configuration
 from core.game_loop import GameLoop
 from core.network_manager import NetworkManager
+from core.webserver import WebServer
 from display.animations import Animations
 from utils.logs import start_logger
 from utils.path import PathTo
 
 
-async def async_main(use_emulator: bool = False) -> None:
+async def async_main(use_emulator: bool = False, use_debug: bool = False) -> None:
     """
     Main async entry point.
     Orchestrates initialization, loading animation, and game loop execution.
@@ -35,6 +36,8 @@ async def async_main(use_emulator: bool = False) -> None:
             )
     else:
         logger.warning("Network manager disabled (emulator mode)")
+
+    WebServer().start(port=9000, debug=use_debug)
 
     game_loop = GameLoop(use_emulator)
 
@@ -89,7 +92,7 @@ def main() -> None:
     start_logger(file_level="DEBUG", console_level=log_level)
 
     try:
-        asyncio.run(async_main(use_emulator=args.emulator))
+        asyncio.run(async_main(use_emulator=args.emulator, use_debug=args.debug))
     except KeyboardInterrupt:
         logger.info("Interrupted by user.")
     except Exception as e:

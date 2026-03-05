@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Carousel — Review Changes{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('catalog') }}" class="back-link">&larr; Back to Apps</a>
+
+<h1 class="page-title">Review {{ changes|length }} Pending Change{{ "s" if changes|length != 1 else "" }}</h1>
+<p class="page-subtitle">
+    These changes will be saved as a new configuration (generation {{ next_gen }})
+    and the Carousel will restart automatically.
+</p>
+
+{% if not changes %}
+<p style="color: var(--color-muted);">No pending changes.</p>
+{% else %}
+
+{% for display_path, group_changes in grouped.items() %}
+<div class="change-group">
+    <div class="change-group-header">{{ display_path }}</div>
+    {% for change in group_changes %}
+    {% include "partials/change_row.html" %}
+    {% endfor %}
+</div>
+{% endfor %}
+
+<div class="review-actions">
+    <button id="discard-all-btn" class="btn btn-ghost">Discard All Changes</button>
+    <div>
+        <button id="confirm-restart-btn" class="btn btn-success" autofocus>
+            Confirm & Restart &rarr;
+        </button>
+        <div id="save-error" style="display:none;"></div>
+    </div>
+</div>
+
+{% endif %}
+
+<!-- Restart overlay -->
+<div id="restart-overlay" class="restart-overlay" style="display:none;">
+    <h2>Restarting...</h2>
+    <p>The Carousel is restarting. Reconnect in ~10 seconds.</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='review.js') }}"></script>
+{% endblock %}

@@ -46,29 +46,21 @@
                 <div class="recovery-mode-action-body">
                     <h3>Option A — Edit &amp; fix the broken config</h3>
                     <p>
-                        Opens the standard configuration editor preloaded with the
-                        broken generation&nbsp;#{{ broken_id }}. Fix the problematic
-                        values, then click <strong>Apply fixed config</strong> below
-                        to save it as a new working generation.
+                        Opens the configuration editor preloaded with the broken
+                        generation&nbsp;#{{ broken_id }}. Fix the problematic values,
+                        then use the <strong>Review &amp; Save</strong> banner to save
+                        and restart.
                     </p>
-                    <a href="{{ url_for('homepage') }}" class="btn btn-primary">
+                    <a href="{{ url_for('catalog') }}" class="btn btn-primary">
                         Open config editor
                     </a>
-                </div>
-                <div class="recovery-mode-action-footer">
-                    <form action="{{ url_for('recovery_mode_apply') }}" method="POST"
-                          onsubmit="return confirm('Save the current (edited) config as a new working generation and restart?')">
-                        <button type="submit" class="btn btn-success">
-                            Apply fixed config &amp; restart
-                        </button>
-                    </form>
                 </div>
             </div>
             {% endif %}
 
-            <!-- Option B: Restore previous working generation OR generate new -->
+            <!-- Option B: Restore previous working generation -->
+            {% if has_previous %}
             <div class="recovery-mode-action-card">
-                {% if has_previous %}
                 <div class="recovery-mode-action-body">
                     <h3>Option B — Restore previous working config</h3>
                     <p>
@@ -77,8 +69,6 @@
                         The broken config is archived as
                         <code>generation_{{ broken_id }}.broken.yaml</code>.
                     </p>
-                </div>
-                <div class="recovery-mode-action-footer">
                     <form action="{{ url_for('recovery_mode_rollback') }}" method="POST"
                           onsubmit="return confirm('Restore generation #{{ previous_working_id }} and restart?')">
                         <button type="submit" class="btn btn-warning">
@@ -86,16 +76,25 @@
                         </button>
                     </form>
                 </div>
-                {% else %}
+            </div>
+            {% endif %}
+
+            <!-- Option A/B/C (letter depends on how many options precede it) -->
+            {% if has_broken_config and has_previous %}
+                {% set gen_letter = "C" %}
+            {% elif has_broken_config or has_previous %}
+                {% set gen_letter = "B" %}
+            {% else %}
+                {% set gen_letter = "A" %}
+            {% endif %}
+            <div class="recovery-mode-action-card">
                 <div class="recovery-mode-action-body">
-                    <h3>Option B — Generate a fresh config from template</h3>
+                    <h3>Option {{ gen_letter }} — Factory reset from template</h3>
                     <p>
-                        No previous working generation exists. Create a brand-new
-                        configuration from the default template. You will need to
-                        re-configure all settings after restart.
+                        Generate a brand-new configuration from the default template.
+                        All existing settings will be lost. You will need to
+                        re-configure everything after restart.
                     </p>
-                </div>
-                <div class="recovery-mode-action-footer">
                     <form action="{{ url_for('recovery_mode_generate_new') }}" method="POST"
                           onsubmit="return confirm('Generate a fresh config from template and restart? All existing settings will be lost.')">
                         <button type="submit" class="btn btn-danger">
@@ -103,15 +102,36 @@
                         </button>
                     </form>
                 </div>
-                {% endif %}
             </div>
         </div>
 
     </div>
 
     <script>
+        function waitForRestart(redirectUrl) {
+            var MAX_TRIES = 60;
+            var downDetected = false;
+            var tries = 0;
+            var timer = setInterval(function() {
+                tries++;
+                fetch('/', { method: 'HEAD', cache: 'no-store' })
+                    .then(function() {
+                        if (downDetected) {
+                            clearInterval(timer);
+                            window.location.href = redirectUrl;
+                        }
+                    })
+                    .catch(function() {
+                        downDetected = true;
+                    });
+                if (tries >= MAX_TRIES) {
+                    clearInterval(timer);
+                }
+            }, 1000);
+        }
+
         // Intercept all POST recovery buttons to show a loading state
-        document.querySelectorAll('.recovery-mode-action-footer form').forEach(function(form) {
+        document.querySelectorAll('.recovery-mode-action-card form').forEach(function(form) {
             form.addEventListener('submit', function(e) {
                 var btn = form.querySelector('button[type="submit"]');
                 if (btn) {
@@ -126,6 +146,7 @@
                     .then(function(data) {
                         if (data.status === 'success') {
                             btn.textContent = data.message || 'Done — restarting…';
+                            waitForRestart('/catalog');
                         } else {
                             btn.disabled = false;
                             btn.textContent = btn.dataset.originalText || 'Try again';

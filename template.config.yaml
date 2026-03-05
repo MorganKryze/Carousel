@@ -95,103 +95,46 @@ Apps:
   MainScreen:
     enabled: true
     order: 1
-    meta:
-      name: Main Screen
-      description: The main screen of the matrix, displaying time, date, and other information.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
       use_24_hour: true
       date_format: DD-MM
       cycle_duration_in_seconds: 20
-    dependencies:
   GifPlayer:
     enabled: true
     order: 2
-    meta:
-      name: GIF Player
-      description: Displays animated GIFs on the matrix.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
       play_limit: 5
-    dependencies:
   Pomodoro:
     enabled: true
     order: 3
-    meta:
-      name: Pomodoro
-      description: A productivity timer that helps you focus on tasks.
-      provides_horizontal_content: false
-      provides_vertical_content: true
     config:
       work_duration_in_minutes: 25
       break_duration_in_minutes: 5
       long_break_duration_in_minutes: 15
-    dependencies:
   GameOfLife:
     enabled: true
     order: 4
-    meta:
-      name: Game of Life
-      description: A cellular automaton simulation that displays patterns on the matrix.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
-    dependencies:
   Spotify:
     enabled: false
     order: 5
-    meta:
-      name: Spotify
-      description: Displays the current playing track from Spotify.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
-    dependencies:
-      - Spotify
   Notion:
     enabled: false
     order: 6
-    meta:
-      name: Notion
-      description: Displays information from Notion databases.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
       token_v2:
       source:
-    dependencies:
   Youtube:
     enabled: false
     order: 7
-    meta:
-      name: YouTube
-      description: Displays the latest videos from a YouTube channel.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
       key:
-    dependencies:
   Pushbullet:
     enabled: false
     order: 8
-    meta:
-      name: Pushbullet
-      description: Displays notifications from Pushbullet.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
-    dependencies:
-      - Notifications
   Weather:
     enabled: false
     order: 9
-    meta:
-      name: Weather
-      description: Displays the current weather conditions.
-      provides_horizontal_content: true
-      provides_vertical_content: false
     config:
-    dependencies:
-      - Weather

@@ -2,7 +2,7 @@
 
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -185,62 +185,19 @@ class ModuleConfig(BaseModel):
     config: Optional[Dict[str, Any]] = None
 
 
-class AppMeta(BaseModel):
-    """Application metadata."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    name: str = Field(min_length=1)
-    description: str = Field(min_length=1)
-    provides_horizontal_content: bool
-    provides_vertical_content: bool
-
-    @field_validator("name", "description", mode="before")
-    @classmethod
-    def normalize_strings(cls, value):
-        if not isinstance(value, str):
-            return value
-        return value.strip()
-
-    @model_validator(mode="after")
-    def validate_orientations(self):
-        if not self.provides_horizontal_content and not self.provides_vertical_content:
-            raise ValueError(
-                "At least one of provides_horizontal_content or provides_vertical_content must be true"
-            )
-        return self
-
-
 class AppConfig(BaseModel):
-    """Application configuration entry."""
+    """Application configuration entry.
+
+    Metadata (name, description, orientations) and dependencies have been moved
+    to ``src/core/app_catalog.py``.  This model now covers only user-editable
+    fields: enabled state, carousel order, and per-app config dict.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool
     order: int = Field(ge=1)
-    meta: AppMeta
     config: Optional[Dict[str, Any]] = None
-    dependencies: Optional[List[str]] = None
-
-    @field_validator("dependencies", mode="after")
-    @classmethod
-    def validate_dependencies(cls, value):
-        if value is None:
-            return value
-
-        cleaned = []
-        for item in value:
-            if not isinstance(item, str):
-                raise ValueError("dependencies must contain only strings")
-            dep = item.strip()
-            if not dep:
-                raise ValueError("dependencies cannot contain empty values")
-            cleaned.append(dep)
-
-        if len(cleaned) != len(set(cleaned)):
-            raise ValueError("dependencies cannot contain duplicates")
-
-        return cleaned
 
 
 class ConfigRoot(BaseModel):
@@ -270,12 +227,5 @@ class ConfigRoot(BaseModel):
                     f"({app_order_map[app_config.order]} and {app_key})"
                 )
             app_order_map[app_config.order] = app_key
-
-            if app_config.dependencies:
-                for dependency in app_config.dependencies:
-                    if dependency not in self.Modules:
-                        raise ValueError(
-                            f"App '{app_key}' has unknown dependency '{dependency}'"
-                        )
 
         return self

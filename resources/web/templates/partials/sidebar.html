@@ -1,0 +1,29 @@
+<nav class="sidebar">
+    <div class="sidebar-header">
+        <h1>Carousel</h1>
+        {% if is_recovery_mode %}
+        <span class="recovery-badge">RECOVERY MODE</span>
+        {% endif %}
+    </div>
+
+    <div class="sidebar-nav">
+        <div class="sidebar-section-title">Categories</div>
+        <a href="{{ url_for('catalog') }}"
+           class="sidebar-link {% if request.path == '/catalog' and not request.view_args.get('category') %}active{% endif %}">
+            All Apps
+        </a>
+        {% for cat in categories %}
+        <a href="{{ url_for('catalog', category=cat) }}"
+           class="sidebar-link {% if request.view_args.get('category') == cat %}active{% endif %}">
+            {{ cat }}
+        </a>
+        {% endfor %}
+    </div>
+
+    <div class="sidebar-footer">
+        <a href="{{ url_for('settings') }}"
+           class="sidebar-link {% if request.path.startswith('/settings') %}active{% endif %}">
+            Settings
+        </a>
+    </div>
+</nav>

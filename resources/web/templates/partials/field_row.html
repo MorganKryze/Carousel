@@ -1,0 +1,38 @@
+{# Renders a single config field row with appropriate input type.
+   Expects: field_key, field_value, data_path, is_staged #}
+{% set _lk = field_key|lower %}
+{% set is_secret = "token" in _lk or "password" in _lk or "secret" in _lk or "api_key" in _lk or "client_id" in _lk %}
+<div class="field-row">
+    <div class="field-label">{{ field_key }}</div>
+    <div class="field-input">
+
+        {% if field_value is sameas true or field_value is sameas false %}
+        <select data-path="{{ data_path }}" class="{% if is_staged %}staged{% endif %}">
+            <option value="true" {% if field_value %}selected{% endif %}>true</option>
+            <option value="false" {% if not field_value %}selected{% endif %}>false</option>
+        </select>
+
+        {% elif field_value is integer %}
+        <input type="number" step="1" value="{{ field_value }}"
+               data-path="{{ data_path }}"
+               class="{% if is_staged %}staged{% endif %}">
+
+        {% elif field_value is float %}
+        <input type="number" step="0.01" value="{{ field_value }}"
+               data-path="{{ data_path }}"
+               class="{% if is_staged %}staged{% endif %}">
+
+        {% elif field_value is none %}
+        <input type="{% if is_secret %}password{% else %}text{% endif %}"
+               value="" placeholder="(not set)"
+               data-path="{{ data_path }}"
+               class="{% if is_staged %}staged{% endif %}">
+
+        {% else %}
+        <input type="{% if is_secret %}password{% else %}text{% endif %}"
+               value="{{ field_value }}"
+               data-path="{{ data_path }}"
+               class="{% if is_staged %}staged{% endif %}">
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Carousel — {{ catalog_entry.name }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('catalog') }}" class="back-link">&larr; Back to All Apps</a>
+
+<div class="app-header">
+    <img src="{{ url_for('static', filename='mockup.png') }}" alt="{{ catalog_entry.name }}" class="card-icon">
+    <div class="app-header-info">
+        <h1>
+            {{ catalog_entry.name }}
+            <span id="enabled-badge"
+                  class="badge {% if app_conf.get('enabled', false) %}badge-success{% else %}badge-muted{% endif %}"
+                  data-enabled="{{ app_conf.get('enabled', false)|lower }}">
+                {% if app_conf.get('enabled', false) %}ENABLED{% else %}DISABLED{% endif %}
+            </span>
+        </h1>
+        <div class="app-meta">
+            Category: {{ catalog_entry.category }}
+            &middot;
+            Carousel position: {{ app_conf.get('order', '?') }}
+        </div>
+        <p class="app-description">{{ catalog_entry.description }}</p>
+    </div>
+    <div class="app-actions">
+        <button id="toggle-app-btn" class="btn {% if app_conf.get('enabled', false) %}btn-ghost{% else %}btn-success{% endif %}"
+                data-app-key="{{ app_key }}">
+            {% if app_conf.get('enabled', false) %}Disable{% else %}Enable{% endif %}
+        </button>
+    </div>
+</div>
+
+{% if missing_deps %}
+<div class="dep-warning">
+    {% for dep in missing_deps %}
+    The "{{ dep }}" module is disabled. Enable it in Settings to use this app.<br>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if app_config_fields %}
+<div class="section-panel">
+    <div class="section-panel-header">Configuration</div>
+    <div class="section-panel-body">
+        {% for key, value in app_config_fields.items() %}
+        {% set field_key = key %}
+        {% set field_value = value %}
+        {% set data_path = "Apps." ~ app_key ~ ".config." ~ key %}
+        {% set is_staged = ("config." ~ key) in staged %}
+        {% include "partials/field_row.html" with context %}
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<details class="metadata-panel">
+    <summary>Metadata</summary>
+    <dl class="metadata-content">
+        <dt>Orientations:</dt>
+        <dd>{{ catalog_entry.orientations | join(', ') | capitalize }}</dd>
+        <dt>Dependencies:</dt>
+        <dd>{% if catalog_entry.dependencies %}{{ catalog_entry.dependencies | join(', ') }}{% else %}&mdash;{% endif %}</dd>
+    </dl>
+</details>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app_detail.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Carousel — {{ section }} › {{ subsection }}{% endblock %}
+
+{% block content %}
+<a href="{{ url_for('settings') }}" class="back-link">&larr; Back to Settings</a>
+
+<h1 class="page-title">{{ subsection }}</h1>
+<p class="page-subtitle">{{ section }} &rsaquo; {{ subsection }}</p>
+
+<div class="section-panel">
+    <div class="section-panel-header">Configuration</div>
+    <div class="section-panel-body">
+        {% if fields is mapping %}
+            {% for key, value in fields.items() %}
+                {% if value is mapping %}
+                    {# Nested dict (e.g. module with meta/config/enabled) #}
+                    {% for subkey, subvalue in value.items() %}
+                        {% if subvalue is not mapping %}
+                        {% set data_path = section ~ "." ~ subsection ~ "." ~ key ~ "." ~ subkey %}
+                        {% set is_staged = (key ~ "." ~ subkey) in staged %}
+                        {% set field_key = key ~ "." ~ subkey %}
+                        {% set field_value = subvalue %}
+                        {% include "partials/field_row.html" with context %}
+                        {% endif %}
+                    {% endfor %}
+                {% else %}
+                {% set data_path = section ~ "." ~ subsection ~ "." ~ key %}
+                {% set is_staged = key in staged %}
+                {% set field_key = key %}
+                {% set field_value = value %}
+                {% include "partials/field_row.html" with context %}
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='app_detail.js') }}"></script>
+{% endblock %}

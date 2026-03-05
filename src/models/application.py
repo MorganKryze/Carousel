@@ -5,6 +5,7 @@ from typing import Callable, Dict
 from loguru import logger
 from PIL import Image
 
+from core.app_catalog import APP_CATALOG
 from core.system_context import SystemContext
 from display.custom_frames import CustomFrames
 from enums.encoder_input import EncoderInput
@@ -32,27 +33,23 @@ class Application:
         self.callbacks = callbacks
         self.status: ServiceStatus = ServiceStatus.INITIALIZING
 
+        app_key = self.__class__.__name__
         config = context.config
 
-        logger.debug(f"[{self.__class__.__name__}] Initializing metadata...")
-        self.enabled = config.get_from_app(
-            self.__class__.__name__, "enabled", required=True
-        )
-        self.name: str = config.get_from_app_meta(
-            self.__class__.__name__, "name", required=True
-        )
-        self.description: str = config.get_from_app_meta(
-            self.__class__.__name__, "description", required=True
-        )
-        self.provides_horizontal_content = config.get_from_app_meta(
-            self.__class__.__name__, "provides_horizontal_content", required=True
-        )
-        self.provides_vertical_content = config.get_from_app_meta(
-            self.__class__.__name__, "provides_vertical_content", required=True
-        )
+        logger.debug(f"[{app_key}] Initializing metadata from catalog...")
+        self.enabled = config.get_from_app(app_key, "enabled", required=True)
 
-        logger.debug(f"[{self.__class__.__name__}] Initializing configuration...")
-        # (remove replacement app config reads)
+        catalog_entry = APP_CATALOG.get(app_key)
+        if catalog_entry is None:
+            logger.error(f"[{app_key}] Not found in APP_CATALOG!")
+            raise RuntimeError(f"App '{app_key}' is not registered in APP_CATALOG")
+
+        self.name: str = catalog_entry.name
+        self.description: str = catalog_entry.description
+        self.provides_horizontal_content = "horizontal" in catalog_entry.orientations
+        self.provides_vertical_content = "vertical" in catalog_entry.orientations
+
+        logger.debug(f"[{app_key}] Initializing configuration...")
 
         if not self.enabled:
             self.status = ServiceStatus.DISABLED

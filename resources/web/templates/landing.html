@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carousel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="landing">
+        <div class="landing-card">
+            <h1>Carousel</h1>
+            <p class="warning-text">
+                This interface directly controls your Carousel matrix.
+                Changes will restart the device.
+            </p>
+
+            <!-- Auth: login form will go here -->
+            <div class="auth-placeholder">
+                Authentication placeholder &mdash; no login required for now.
+            </div>
+
+            <a href="{{ url_for('catalog') }}" class="btn btn-primary" style="width: 100%; font-size: 1.1rem; padding: 0.85rem;">
+                Enter Configuration &rarr;
+            </a>
+        </div>
+    </div>
+</body>
+</html>

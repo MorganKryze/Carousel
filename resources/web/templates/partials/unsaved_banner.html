@@ -1,0 +1,7 @@
+<div id="unsaved-banner" class="unsaved-banner"
+     {% if pending_count == 0 %}style="display:none"{% endif %}>
+    <span class="unsaved-dot">●</span>
+    <span id="unsaved-count">{{ pending_count }}</span> unsaved change{{ "s" if pending_count != 1 else "" }}
+    <a href="{{ url_for('review_changes') }}" class="btn-banner-primary">Review & Save</a>
+    <button id="banner-discard" class="btn-banner-ghost">Discard All</button>
+</div>

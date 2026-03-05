@@ -1,0 +1,10 @@
+<a href="{{ url_for('app_detail', app_name=app.key) }}" class="card" data-name="{{ app.name|lower }}" data-category="{{ app.category }}">
+    <img src="{{ url_for('static', filename='mockup.png') }}" alt="{{ app.name }}" class="card-icon">
+    <div class="card-title">{{ app.name }}</div>
+    <div class="card-desc">{{ app.description }}</div>
+    {% if app.enabled %}
+    <span class="badge badge-success">Enabled</span>
+    {% else %}
+    <span class="badge badge-muted">Disabled</span>
+    {% endif %}
+</a>

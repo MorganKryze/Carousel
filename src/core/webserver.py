@@ -1,13 +1,15 @@
+import copy
 import os
 import socket
 import subprocess
 import threading
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import Flask, jsonify, redirect, render_template, request, url_for
 from loguru import logger
 
+from core.app_catalog import APP_CATALOG, CATEGORY_ORDER
 from core.config import Configuration
 from utils.path import PathTo
 
@@ -15,14 +17,23 @@ from utils.path import PathTo
 class WebServer:
     """Web server for configuring Carousel settings.
 
-    In normal operation the webserver exposes the current generational config
-    for editing.  When the system is in recovery mode it loads the broken generation
-    (if available) into a separate ``_recovery_config`` dict so the user can
-    edit it, then save a corrected generation before restarting.
+    Always-on singleton webserver providing an app-store-style configuration
+    interface.  In recovery mode it loads the broken generation for editing.
+
+    Uses a staged-changes pattern: edits are accumulated in ``_pending_changes``
+    (server memory only) and written to disk only on explicit user confirmation.
     """
 
-    def __init__(self):
-        """Initialize the web server and pre-load recovery config if in recovery mode."""
+    _instance: Optional["WebServer"] = None
+
+    def __new__(cls) -> "WebServer":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._do_init()
+        return cls._instance
+
+    def _do_init(self) -> None:
+        """One-time initialization (called from ``__new__``)."""
         self.is_connected = False
         self.lock = threading.Lock()
         self.config_manager = Configuration()
@@ -32,8 +43,9 @@ class WebServer:
             static_folder=os.path.join(PathTo.base_directory, PathTo.STATIC_FOLDER),
         )
 
-        # In recovery mode: hold the broken config for editing.  None = not in recovery mode
-        # or broken generation could not be loaded.
+        self._pending_changes: Dict[str, Dict] = {}
+
+        # In recovery mode: hold the broken config for editing.
         self._recovery_config: Optional[Dict[str, Any]] = (
             self.config_manager.get_broken_generation_for_editing()
             if self.config_manager.is_recovery_mode()
@@ -42,6 +54,7 @@ class WebServer:
 
         self._register_routes()
         self.server_thread = None
+        self._server_instance = None
 
     # ------------------------------------------------------------------
     # Route registration
@@ -49,22 +62,69 @@ class WebServer:
 
     def _register_routes(self) -> None:
         """Register all routes with the Flask app."""
-        # Landing / home
+
+        # Context processor — available in every template
+        @self.app.context_processor
+        def inject_globals():
+            return {
+                "pending_count": len(self._pending_changes),
+                "is_recovery_mode": self.config_manager.is_recovery_mode(),
+                "categories": CATEGORY_ORDER,
+            }
+
+        # Landing
         self.app.add_url_rule("/", "index", self.index)
-        self.app.add_url_rule("/home", "homepage", self.homepage)
 
-        # Config editing
+        # Catalog
+        self.app.add_url_rule("/catalog", "catalog", self.catalog)
+        self.app.add_url_rule("/catalog/<category>", "catalog", self.catalog)
+
+        # App detail
+        self.app.add_url_rule("/app/<app_name>", "app_detail", self.app_detail)
+
+        # Settings
+        self.app.add_url_rule("/settings", "settings", self.settings)
         self.app.add_url_rule(
-            "/section/<section_name>", "edit_section", self.edit_section
-        )
-        self.app.add_url_rule(
-            "/section/<section_name>/<subsection>", "edit_section", self.edit_section
-        )
-        self.app.add_url_rule(
-            "/update", "update_config", self.update_config, methods=["POST"]
+            "/settings/<section>/<subsection>",
+            "settings_section",
+            self.settings_section,
         )
 
-        # System control
+        # Review
+        self.app.add_url_rule("/review", "review_changes", self.review_changes)
+
+        # API endpoints
+        self.app.add_url_rule(
+            "/api/pending-changes",
+            "get_pending_changes",
+            self.get_pending_changes,
+        )
+        self.app.add_url_rule(
+            "/api/stage-change",
+            "stage_change",
+            self.stage_change,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/api/toggle-app",
+            "toggle_app",
+            self.toggle_app,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/api/discard-changes",
+            "discard_changes",
+            self.discard_changes,
+            methods=["POST"],
+        )
+        self.app.add_url_rule(
+            "/api/save-changes",
+            "save_changes",
+            self.save_changes,
+            methods=["POST"],
+        )
+
+        # System control (preserved)
         self.app.add_url_rule(
             "/restart", "restart_system", self.restart_system, methods=["POST"]
         )
@@ -72,7 +132,7 @@ class WebServer:
             "/close", "close_connection", self.close_connection, methods=["POST"]
         )
 
-        # Recovery mode
+        # Recovery mode (preserved)
         self.app.add_url_rule(
             "/recovery-mode", "recovery_mode_page", self.recovery_mode_page
         )
@@ -99,13 +159,33 @@ class WebServer:
     # Helpers
     # ------------------------------------------------------------------
 
-    def _get_editable_config(self) -> Dict[str, Any]:
-        """Return the config dict that should be presented for editing.
+    def _get_live_value(self, path_parts: List[str]) -> Any:
+        """Navigate the editable config by path_parts list."""
+        node = self._get_editable_config()
+        for part in path_parts:
+            node = node[part]
+        return node
 
-        In recovery mode this is the broken generation loaded at init time
-        (so the user can fix and apply it).  In normal operation it is the
-        live configuration dictionary.
-        """
+    def _apply_pending_to_config(self, config_copy: Dict) -> Dict:
+        """Apply all _pending_changes to a deep copy of the config."""
+        for entry in self._pending_changes.values():
+            node = config_copy
+            for part in entry["path_parts"][:-1]:
+                node = node[part]
+            node[entry["path_parts"][-1]] = entry["new"]
+        return config_copy
+
+    def _get_staged_values_for_app(self, app_name: str) -> Dict[str, Any]:
+        """Return {field_key: new_value} for all staged changes under Apps.<app_name>."""
+        prefix = f"Apps.{app_name}."
+        return {
+            k.replace(prefix, ""): v["new"]
+            for k, v in self._pending_changes.items()
+            if k.startswith(prefix)
+        }
+
+    def _get_editable_config(self) -> Dict[str, Any]:
+        """Return the config dict that should be presented for editing."""
         if self.config_manager.is_recovery_mode() and self._recovery_config is not None:
             return self._recovery_config
         return self.config_manager.configuration_dictionary
@@ -117,11 +197,6 @@ class WebServer:
         else:
             self.config_manager.configuration_dictionary = config
 
-    def save_config(self, config: Dict[str, Any]) -> None:
-        """Create a new generation from *config* (normal mode only)."""
-        if not self.config_manager.create_new_config_generation(config):
-            logger.error("Failed to save configuration update as new generation.")
-
     def _delayed_restart(self, delay: float = 1.0) -> None:
         """Restart the application process after a short delay."""
 
@@ -132,105 +207,286 @@ class WebServer:
         threading.Thread(target=_do, daemon=True).start()
 
     # ------------------------------------------------------------------
-    # Normal routes
+    # Normal mode routes
     # ------------------------------------------------------------------
 
     def index(self):
-        """Landing page — redirect to recovery mode page when in recovery mode."""
+        """Landing / warning page."""
         if self.config_manager.is_recovery_mode():
             return redirect(url_for("recovery_mode_page"))
         with self.lock:
             self.is_connected = True
-        return render_template("index.html")
+        return render_template("landing.html")
 
-    def homepage(self):
-        """Main configuration categories page — redirect when in recovery mode."""
-        if self.config_manager.is_recovery_mode():
-            return redirect(url_for("recovery_mode_page"))
-
-        config = self.config_manager.configuration_dictionary
-        apps = config.get("Apps", {})
-        modules = config.get("Modules", {})
-        system = config.get("System", {})
-
-        return render_template("home.html", apps=apps, modules=modules, system=system)
-
-    def edit_section(self, section_name, subsection=None):
-        """Edit a specific section/subsection of the configuration.
-
-        In recovery mode the BROKEN generation is shown for editing, clearly
-        flagged in the template via ``is_recovery_mode``.
-        """
+    def catalog(self, category=None):
+        """App store grid — all categories or filtered by one."""
         config = self._get_editable_config()
-        is_recovery_mode = self.config_manager.is_recovery_mode()
+        apps_config = config.get("Apps", {})
 
-        if section_name in config:
-            if subsection and subsection in config[section_name]:
-                return render_template(
-                    "section.html",
-                    section_name=section_name,
-                    subsection=subsection,
-                    section_data=config[section_name][subsection],
-                    is_recovery_mode=is_recovery_mode,
-                )
-            return render_template(
-                "section.html",
-                section_name=section_name,
-                section_data=config[section_name],
-                is_recovery_mode=is_recovery_mode,
-            )
+        # Build app list with catalog metadata merged in
+        apps = []
+        for app_key, app_conf in apps_config.items():
+            catalog_entry = APP_CATALOG.get(app_key)
+            if catalog_entry is None:
+                continue
 
-        target = (
-            url_for("recovery_mode_page") if is_recovery_mode else url_for("homepage")
+            if category and catalog_entry.category != category:
+                continue
+
+            apps.append({
+                "key": app_key,
+                "name": catalog_entry.name,
+                "description": catalog_entry.description,
+                "category": catalog_entry.category,
+                "enabled": app_conf.get("enabled", False),
+                "order": app_conf.get("order", 999),
+            })
+
+        # Sort: enabled apps first (by order), then disabled alphabetically
+        apps.sort(key=lambda a: (not a["enabled"], a["order"] if a["enabled"] else a["name"]))
+
+        return render_template(
+            "catalog.html",
+            apps=apps,
+            active_category=category,
         )
-        return redirect(target)
 
-    def update_config(self):
-        """Update the in-memory configuration from the submitted form.
+    def app_detail(self, app_name):
+        """Per-app detail + config editor."""
+        catalog_entry = APP_CATALOG.get(app_name)
+        if catalog_entry is None:
+            return redirect(url_for("catalog"))
 
-        In recovery mode the edit is staged in ``_recovery_config``; it is only
-        persisted when the user clicks *Apply fixed config*.
-        """
         config = self._get_editable_config()
-        data = request.form.to_dict()
+        app_conf = config.get("Apps", {}).get(app_name, {})
+        app_config_fields = app_conf.get("config") or {}
 
-        section = data.get("section")
-        subsection = data.get("subsection")
+        # Check module dependencies
+        modules_config = config.get("Modules", {})
+        missing_deps = []
+        for dep in catalog_entry.dependencies:
+            mod = modules_config.get(dep, {})
+            if not mod.get("enabled", False):
+                missing_deps.append(dep)
 
-        if section and section in config:
-            target = (
-                config[section][subsection]
-                if subsection and subsection in config[section]
-                else config[section]
-            )
-            skip_keys = {"section", "subsection"}
+        staged = self._get_staged_values_for_app(app_name)
 
-            for key, value in data.items():
-                if key in skip_keys or key not in target:
-                    continue
-                if isinstance(target[key], bool):
-                    target[key] = value.lower() == "true"
-                elif isinstance(target[key], int):
-                    try:
-                        target[key] = int(value)
-                    except ValueError:
-                        pass
-                elif isinstance(target[key], float):
-                    try:
-                        target[key] = float(value)
-                    except ValueError:
-                        pass
-                else:
-                    target[key] = value
+        return render_template(
+            "app_detail.html",
+            app_key=app_name,
+            catalog_entry=catalog_entry,
+            app_conf=app_conf,
+            app_config_fields=app_config_fields,
+            missing_deps=missing_deps,
+            staged=staged,
+        )
 
-            # Stage the change
-            self._set_editable_config(config)
+    def settings(self):
+        """System config hub — Matrix, Network, Encoder, Tilt, Modules."""
+        config = self._get_editable_config()
+        system = config.get("System", {})
+        modules = config.get("Modules", {})
 
+        return render_template("settings.html", system=system, modules=modules)
+
+    def settings_section(self, section, subsection):
+        """Subsection form editor for system settings."""
+        config = self._get_editable_config()
+
+        section_data = config.get(section, {})
+        subsection_data = section_data.get(subsection)
+        if subsection_data is None:
+            return redirect(url_for("settings"))
+
+        # Build staged values for this section
+        prefix = f"{section}.{subsection}."
+        staged = {
+            k.replace(prefix, ""): v["new"]
+            for k, v in self._pending_changes.items()
+            if k.startswith(prefix)
+        }
+
+        return render_template(
+            "settings_section.html",
+            section=section,
+            subsection=subsection,
+            fields=subsection_data,
+            staged=staged,
+        )
+
+    def review_changes(self):
+        """Diff view of all pending changes."""
+        changes = list(self._pending_changes.values())
+
+        # Group by display_path
+        grouped: Dict[str, list] = {}
+        for change in changes:
+            dp = change.get("display_path", "")
+            grouped.setdefault(dp, []).append(change)
+
+        next_gen = self._get_editable_config().get("Metadata", {}).get("id", 0) + 1
+
+        return render_template(
+            "review_changes.html",
+            changes=changes,
+            grouped=grouped,
+            next_gen=next_gen,
+        )
+
+    # ------------------------------------------------------------------
+    # API endpoints
+    # ------------------------------------------------------------------
+
+    def get_pending_changes(self):
+        """Return pending changes as JSON."""
+        return jsonify({
+            "count": len(self._pending_changes),
+            "changes": list(self._pending_changes.values()),
+        })
+
+    def stage_change(self):
+        """Stage one field change."""
+        data = request.get_json(silent=True) or {}
+        path = data.get("path", "")
+        new_value = data.get("new_value")
+
+        if not path:
+            return jsonify({"status": "error", "message": "Missing path"}), 400
+
+        path_parts = path.split(".")
+        try:
+            old_value = self._get_live_value(path_parts)
+        except (KeyError, TypeError) as e:
+            return jsonify({"status": "error", "message": f"Invalid path: {e}"}), 400
+
+        # Type coercion
+        if isinstance(old_value, bool):
+            if isinstance(new_value, str):
+                new_value = new_value.lower() == "true"
+            else:
+                new_value = bool(new_value)
+            val_type = "bool"
+        elif isinstance(old_value, int):
+            new_value = int(new_value)
+            val_type = "int"
+        elif isinstance(old_value, float):
+            new_value = float(new_value)
+            val_type = "float"
+        elif old_value is None:
+            val_type = "null"
+        else:
+            new_value = str(new_value) if new_value is not None else ""
+            val_type = "str"
+
+        # If reverted to original, remove from pending
+        if new_value == old_value:
+            self._pending_changes.pop(path, None)
+        else:
+            section = path_parts[0] if len(path_parts) > 0 else ""
+            subsection = path_parts[1] if len(path_parts) > 1 else ""
+            label = path_parts[-1]
+            display_path = " › ".join(path_parts[:-1])
+
+            self._pending_changes[path] = {
+                "path": path,
+                "path_parts": path_parts,
+                "section": section,
+                "subsection": subsection,
+                "label": label,
+                "display_path": display_path,
+                "old": old_value,
+                "new": new_value,
+                "type": val_type,
+            }
+
+        return jsonify({"status": "ok", "pending_count": len(self._pending_changes)})
+
+    def toggle_app(self):
+        """Toggle app enabled/disabled — shorthand for stage_change."""
+        data = request.get_json(silent=True) or {}
+        app_key = data.get("app_key", "")
+
+        if not app_key:
+            return jsonify({"status": "error", "message": "Missing app_key"}), 400
+
+        path = f"Apps.{app_key}.enabled"
+        path_parts = path.split(".")
+
+        try:
+            current = self._get_live_value(path_parts)
+        except (KeyError, TypeError):
+            return jsonify({"status": "error", "message": f"App '{app_key}' not found"}), 404
+
+        new_value = not current
+        # Check if there's already a staged change — if so, the effective value differs
+        if path in self._pending_changes:
+            staged_val = self._pending_changes[path]["new"]
+            new_value = not staged_val
+
+        # Delegate to stage_change logic
+        if new_value == current:
+            self._pending_changes.pop(path, None)
+        else:
+            self._pending_changes[path] = {
+                "path": path,
+                "path_parts": path_parts,
+                "section": "Apps",
+                "subsection": app_key,
+                "label": "enabled",
+                "display_path": f"Apps › {app_key}",
+                "old": current,
+                "new": new_value,
+                "type": "bool",
+            }
+
+        return jsonify({
+            "status": "ok",
+            "pending_count": len(self._pending_changes),
+            "new_enabled": new_value,
+        })
+
+    def discard_changes(self):
+        """Clear all staged changes."""
+        self._pending_changes.clear()
+        return jsonify({"status": "ok", "pending_count": 0})
+
+    def save_changes(self):
+        """Apply staged changes, create new generation, restart."""
+        if not self._pending_changes:
+            return jsonify({"status": "error", "message": "No pending changes"}), 400
+
+        config_copy = copy.deepcopy(self._get_editable_config())
+        self._apply_pending_to_config(config_copy)
+
+        # In recovery mode the base config carries is_broken=True — strip it so
+        # the new generation is treated as a healthy config on next boot.
         if self.config_manager.is_recovery_mode():
-            return redirect(url_for("recovery_mode_page"))
+            config_copy.setdefault("Metadata", {})["is_broken"] = False
+            config_copy["Metadata"]["broken_reason"] = None
 
-        self.save_config(config)
-        return redirect(url_for("homepage"))
+        try:
+            if not self.config_manager.create_new_config_generation(config_copy):
+                return jsonify({
+                    "status": "error",
+                    "message": "Failed to save configuration.",
+                }), 500
+        except Exception as e:
+            return jsonify({
+                "status": "error",
+                "message": f"Validation failed: {e}",
+            }), 422
+
+        gen_id = config_copy.get("Metadata", {}).get("id", "?")
+        self._pending_changes.clear()
+        self._delayed_restart()
+        return jsonify({
+            "status": "success",
+            "message": f"Configuration saved as generation {gen_id}. Restarting...",
+        })
+
+    # ------------------------------------------------------------------
+    # System control (preserved)
+    # ------------------------------------------------------------------
 
     def restart_system(self):
         """Restart the Raspberry Pi (apply hardware-level changes)."""
@@ -254,25 +510,25 @@ class WebServer:
         with self.lock:
             return self.is_connected
 
-    def start(self, port: int, debug: bool) -> threading.Thread:
-        """Start the web server in a background daemon thread.
-
-        Uses Waitress for production runtime and Flask's development server only
-        when debug mode is explicitly enabled.
-        """
+    def start(self, port: int, debug: bool = False) -> threading.Thread:
+        """Start the web server in a background daemon thread."""
 
         def run_server():
             host = "0.0.0.0"
             if debug:
                 logger.warning("Starting Flask development server (debug mode enabled)")
-                self.app.run(host=host, port=port, debug=True, use_reloader=False)
+                from werkzeug.serving import make_server
+
+                server = make_server(host, port, self.app)
+                self._server_instance = server
+                server.serve_forever()
                 return
 
             try:
-                from waitress import serve
+                from waitress import create_server
 
                 logger.info("Starting Waitress production server")
-                serve(
+                server = create_server(
                     self.app,
                     host=host,
                     port=port,
@@ -281,37 +537,52 @@ class WebServer:
                     channel_timeout=30,
                     cleanup_interval=15,
                 )
+                self._server_instance = server
+                server.run()
             except ModuleNotFoundError:
                 logger.error(
                     "Waitress is not installed; falling back to Flask development server. "
                     "Install dependencies to use production server mode."
                 )
-                self.app.run(host=host, port=port, debug=False, use_reloader=False)
+                from werkzeug.serving import make_server
+
+                server = make_server(host, port, self.app)
+                self._server_instance = server
+                server.serve_forever()
 
         self.server_thread = threading.Thread(target=run_server, daemon=True)
         self.server_thread.start()
         logger.info(f"Web server started on port {port}")
         return self.server_thread
 
+    def stop(self) -> None:
+        """Shut down the server and release the port."""
+        if self._server_instance is None:
+            return
+        try:
+            self._server_instance.shutdown()  # werkzeug BaseWSGIServer
+        except AttributeError:
+            try:
+                self._server_instance.close()  # waitress TcpWSGIServer
+            except Exception as e:
+                logger.warning(f"Failed to close server socket: {e}")
+        self._server_instance = None
+        logger.info("Web server stopped.")
+
     # ------------------------------------------------------------------
-    # Recovery mode routes
+    # Recovery mode routes (preserved)
     # ------------------------------------------------------------------
 
     def recovery_mode_page(self):
-        """Dedicated recovery mode page.
-
-        Provides the user with contextual information about the critical error
-        and the available recovery actions.
-        """
+        """Dedicated recovery mode page."""
         if not self.config_manager.is_recovery_mode():
-            return redirect(url_for("homepage"))
+            return redirect(url_for("catalog"))
 
         info = self.config_manager.get_recovery_mode_info() or {}
         reason = info.get("reason", "Unknown critical error")
         broken_id = info.get("broken_generation_id", 0)
         timestamp = info.get("timestamp", "")
 
-        # Determine which recovery options are available
         has_broken_config = self._recovery_config is not None
         previous_working_id = self.config_manager.get_latest_working_generation_id()
         has_previous = previous_working_id > 0
@@ -330,39 +601,29 @@ class WebServer:
         )
 
     def recovery_mode_apply(self):
-        """Apply the (edited) broken config as a new working generation.
-
-        The user has reviewed/fixed the broken config via the section editor.
-        This saves it as a new generation, clears recovery mode, and restarts.
-        """
+        """Apply the (edited) broken config as a new working generation."""
         if not self.config_manager.is_recovery_mode():
             return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
         if self._recovery_config is None:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "No recovery config available to apply",
-                }
-            ), 400
+            return jsonify({
+                "status": "error",
+                "message": "No recovery config available to apply",
+            }), 400
 
         logger.info("Recovery mode: applying fixed config as new generation")
 
         if not self.config_manager.apply_recovery_config(self._recovery_config):
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Config validation failed — fix the remaining errors before applying",
-                }
-            ), 422
+            return jsonify({
+                "status": "error",
+                "message": "Config validation failed — fix the remaining errors before applying",
+            }), 422
 
         if not self.config_manager.clear_recovery_mode():
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Config saved but failed to clear recovery mode trigger",
-                }
-            ), 500
+            return jsonify({
+                "status": "error",
+                "message": "Config saved but failed to clear recovery mode trigger",
+            }), 500
 
         self._delayed_restart()
         return jsonify(
@@ -370,48 +631,33 @@ class WebServer:
         )
 
     def recovery_mode_rollback(self):
-        """Restore the previous working generation and exit recovery mode.
-
-        Simply clears the recovery mode trigger; on the next boot ``_load()``
-        will naturally pick up the last valid working generation.
-        Available only when a previous working generation exists.
-        """
+        """Restore the previous working generation and exit recovery mode."""
         if not self.config_manager.is_recovery_mode():
             return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
         prev_id = self.config_manager.get_latest_working_generation_id()
         if prev_id <= 0:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "No previous working generation found",
-                }
-            ), 404
+            return jsonify({
+                "status": "error",
+                "message": "No previous working generation found",
+            }), 404
 
         logger.info(f"Recovery mode: rolling back to generation {prev_id}")
 
         if not self.config_manager.clear_recovery_mode():
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Failed to clear recovery mode trigger",
-                }
-            ), 500
+            return jsonify({
+                "status": "error",
+                "message": "Failed to clear recovery mode trigger",
+            }), 500
 
         self._delayed_restart()
-        return jsonify(
-            {
-                "status": "success",
-                "message": f"Restoring generation {prev_id}. Restarting...",
-            }
-        )
+        return jsonify({
+            "status": "success",
+            "message": f"Restoring generation {prev_id}. Restarting...",
+        })
 
     def recovery_mode_generate_new(self):
-        """Generate a fresh config from the template and exit recovery mode.
-
-        Available as a last resort when there is no previous working
-        generation to roll back to (i.e., generation ID was 1).
-        """
+        """Generate a fresh config from the template and exit recovery mode."""
         if not self.config_manager.is_recovery_mode():
             return jsonify({"status": "error", "message": "Not in recovery mode"}), 400
 
@@ -420,20 +666,16 @@ class WebServer:
         try:
             self.config_manager.create_new_configuration_from_template()
         except SystemExit:
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Failed to generate config from template",
-                }
-            ), 500
+            return jsonify({
+                "status": "error",
+                "message": "Failed to generate config from template",
+            }), 500
 
         if not self.config_manager.clear_recovery_mode():
-            return jsonify(
-                {
-                    "status": "error",
-                    "message": "Config generated but failed to clear recovery mode trigger",
-                }
-            ), 500
+            return jsonify({
+                "status": "error",
+                "message": "Config generated but failed to clear recovery mode trigger",
+            }), 500
 
         self._delayed_restart()
         return jsonify(
@@ -446,10 +688,7 @@ class WebServer:
 
     @staticmethod
     def check_internet_connectivity() -> bool:
-        """Check if internet connectivity is available.
-
-        :return: True if internet is reachable, False otherwise.
-        """
+        """Check if internet connectivity is available."""
         GOOGLE_DNS = "8.8.8.8"
         CLOUDFLARE_DNS = "1.1.1.1"
         DNS_PORT = 53

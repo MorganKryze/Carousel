@@ -228,26 +228,6 @@ class Configuration:
         """
         return self.get("Apps", app_name, *keys, default=default, required=required)
 
-    def get_from_app_meta(
-        self,
-        app_name: str,
-        *keys: str,
-        default: Any = None,
-        required: bool = False,
-    ) -> Any:
-        """Get a value from an app's metadata.
-
-        :param app_name: Name of the app.
-        :param keys: Variable number of keys in app meta.
-        :param default: Default value if not found.
-        :param required: If True, exit if key missing or None.
-
-        :return: Value from app metadata, or default.
-        """
-        return self.get(
-            "Apps", app_name, "meta", *keys, default=default, required=required
-        )
-
     def get_from_app_config(
         self,
         app_name: str,
@@ -469,6 +449,14 @@ class Configuration:
                         f"Error during hardware cleanup: {cleanup_error}", exc_info=True
                     )
                     logger.warning("Proceeding with restart despite cleanup errors.")
+
+            try:
+                from core.webserver import WebServer  # lazy import avoids circular dep
+
+                WebServer().stop()
+                logger.info("Web server socket released.")
+            except Exception as ws_error:
+                logger.warning(f"Failed to stop web server before restart: {ws_error}")
 
             logger.warning(
                 "NOTE: A multiprocessing resource_tracker warning may appear below. "

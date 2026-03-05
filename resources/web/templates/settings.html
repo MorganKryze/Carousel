@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Carousel — Settings{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Settings</h1>
+<p class="page-subtitle">System configuration and module management.</p>
+
+<h2 style="font-size: 1.25rem; margin-bottom: 1rem;">System</h2>
+<div class="settings-grid" style="margin-bottom: 2.5rem;">
+    {% for key, data in system.items() %}
+    <a href="{{ url_for('settings_section', section='System', subsection=key) }}" class="settings-card">
+        <h3>{{ key }}</h3>
+        <p>{{ data.keys()|list|length }} settings</p>
+        <div class="system-warning">System-level setting</div>
+    </a>
+    {% endfor %}
+</div>
+
+<h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Modules</h2>
+<div class="settings-grid">
+    {% for key, mod in modules.items() %}
+    <a href="{{ url_for('settings_section', section='Modules', subsection=key) }}" class="settings-card">
+        <h3>{{ mod.get('meta', {}).get('name', key) }}</h3>
+        <p>{{ mod.get('meta', {}).get('description', '') }}</p>
+        {% if mod.get('enabled', false) %}
+        <span class="badge badge-success" style="margin-top: 0.5rem;">Enabled</span>
+        {% else %}
+        <span class="badge badge-muted" style="margin-top: 0.5rem;">Disabled</span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}
